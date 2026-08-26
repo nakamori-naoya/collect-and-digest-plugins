@@ -5,7 +5,7 @@ instructions:
   execution:
     directive: 原文を永続化せず、非公開索引が指す正本を要約工程でだけ読み、stepsを上から順に実行する
 requires:
-  - {plugin: session-collect, marketplace: collection, version: 0.1.2}
+  - {plugin: session-collect, marketplace: collect-and-digest, version: 0.1.2}
   - {plugin: writing-rules, marketplace: write-doc, version: 0.4.15}
 output:
   dir: ~/agent-session-digests
