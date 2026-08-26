@@ -1,12 +1,17 @@
 # Collection
 
-会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。資料化に`write-doc@write-doc`、session本文の規律に`writing-rules@write-doc`を使う。
+会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。
+
+## インストール済みである必要があるplugin
+
+- `digest@collection`: `write-doc@write-doc`
+- `session-digest@collection`: `session-collect@collection`、`writing-rules@write-doc`
+- `meeting-collect@collection`: 追加依存なし
+- `session-collect@collection`: 追加依存なし
+- `slack-collect@collection`: 追加依存なし
+
+## 検証
 
 ```bash
-codex plugin marketplace add nakamori-naoya/collection
-codex plugin add meeting-collect@collection
-codex plugin add slack-collect@collection
-codex plugin add digest@collection
+bash scripts/validate.sh
 ```
-
-検証は`bash scripts/validate.sh`で実行する。
