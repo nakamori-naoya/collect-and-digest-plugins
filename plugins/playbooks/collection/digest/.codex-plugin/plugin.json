@@ -1,0 +1,20 @@
+{
+  "name": "digest",
+  "version": "0.12.0",
+  "description": "複数の収集directoryを日次・週次・月次で横断し、追加promptを反映して資料を1本作る。型は期間ダイジェスト／決定ログ／論点台帳の3種に限定される",
+  "skills": "./skills",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "interface": {
+    "displayName": "Digest",
+    "shortDescription": "複数の収集directoryを日次・週次・月次で横断し、追加promptを反映して資料を1本作る。型は期間ダイジェスト／決定ログ／論点台帳の3種に限定される",
+    "longDescription": "複数の収集directoryを日次・週次・月次で横断し、追加promptを反映して資料を1本作る。型は期間ダイジェスト／決定ログ／論点台帳の3種に限定される",
+    "developerName": "NaoyaNakamori",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "digestを使ってこの作業を進めてください。"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "session-collect",
+  "displayName": "session-collect",
+  "version": "0.1.2",
+  "description": "Claude Code / Codex のローカルセッションを、原文を複製せず日付別の索引として収集する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "session",
+    "collect"
+  ],
+  "skills": "./skills"
+}

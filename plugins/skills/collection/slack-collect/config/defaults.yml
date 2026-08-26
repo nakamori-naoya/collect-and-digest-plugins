@@ -1,0 +1,20 @@
+# slack_dir/timezone: 保存先と対象日の判定timezone。channels: allまたはchannel一覧。
+# targets: 収集対象の種類。groups: group mention名。max_bytes: 1件の上限。
+# credential_redaction: 既知の認証情報フォーマットへ機械的に一致した1メッセージだけを
+# permalink+固定注記へ差し替えるか。意味的判断ではなく決定的パターン一致。既定は安全側でtrue。
+version: 1
+slack_dir: slack
+timezone: Asia/Tokyo
+collect:
+  channels: all
+  targets:
+    channel_messages: false
+    direct_mentions: true
+    group_mentions: false
+    authored_threads: true
+  groups: []
+  max_bytes: 10485760
+  credential_redaction: true
+instructions:
+  collection:
+    directive: 有効な対象のSlack発言を原文のまま収集し、要約・伏せ字・Slackへの書き込みをしない

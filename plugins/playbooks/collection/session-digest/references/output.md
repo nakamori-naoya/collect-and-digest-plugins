@@ -1,0 +1,29 @@
+# 日次記録の契約
+
+## 本文
+
+セッションごとに不透明化したIDとsource表示名を置き、次の見出しをこの順で持つ。該当しない節も省略せず`なし`と書く。
+
+1. 達成したこと
+2. 変更した対象
+3. 採用した判断と理由
+4. 却下した選択肢
+5. 実行した検証と結果
+6. 未解決事項
+7. 次にやること
+
+会話の時系列や発言の言い換えではなく、後から仕事へ再利用できる事実と判断を書く。1セッションの本文全体を設定された文字数内に収める。
+
+## 根拠metadata
+
+本文とは別のJSONファイルを作り、`schema: 1`、`summary_schema`、`sessions`、`generator`、`validation`、`human_reviewed`、`tags`を持たせる。
+
+- `sessions`: `source`、不透明化済み`source_id`、索引の`observed_at`。どのセッションをいつ収集したかを残す。
+- `generator`: 実際に要約した`model`と、この契約を指す`prompt_ref`。不明な値を推測しない。
+- `validation`: `privacy`、`structure`、`source_unchanged`を`passed` / `failed` / `not_checked`で記録する。実行していない検証は`not_checked`にする。
+- `human_reviewed`: 保存時は原則`false`。人が内容を確認したときだけ別の明示的な操作で`true`にする。
+- `tags`: `projects`、`repositories`、`purposes`、`decisions`、`open_questions`の配列を持つ。
+
+タグは将来の日次横断集約に使う。原文から顧客名、repository名、案件名を推測して入れない。利用者が設定または依頼で明示した公開可能なaliasだけを使い、それ以外は空配列にする。文章ではなく短く安定した値にし、同じ対象へ表記揺れを作らない。
+
+storeはmetadataを検証し、schema 2のfront matterへ写す。materialファイルとmetadataファイルは0600で作り、store完了後に削除する。生成要約も原文と同じ機密度として扱う。

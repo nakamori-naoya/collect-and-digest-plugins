@@ -1,0 +1,16 @@
+{
+  "name": "slack-collect",
+  "displayName": "slack-collect",
+  "version": "0.6.15",
+  "description": "自分が関わったスレッドを丸ごと集める。メンションが1回でもあればスレッド全体が対象。permalink を必ず持ち、チャンネルとリンクをタグとして静的に保持する",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "keywords": [
+    "slack",
+    "collect",
+    "mentions",
+    "channels"
+  ],
+  "skills": "./skills"
+}

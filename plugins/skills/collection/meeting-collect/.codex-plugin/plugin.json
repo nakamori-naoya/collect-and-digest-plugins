@@ -1,0 +1,20 @@
+{
+  "name": "meeting-collect",
+  "version": "0.6.13",
+  "description": "対象日（JST）に属する Notion / Google Docs の議事録を、原文のまま1箇所へ集める。抽出も要約もしない。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Meeting Collect",
+    "shortDescription": "対象日（JST）に属する Notion / Google Docs の議事録を、原文のまま1箇所へ集める。抽出も要約もしない。",
+    "longDescription": "対象日（JST）に属する Notion / Google Docs の議事録を、原文のまま1箇所へ集める。抽出も要約もしない。",
+    "developerName": "NaoyaNakamori",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "meeting-collectを使ってこの作業を進めてください。"
+  }
+}

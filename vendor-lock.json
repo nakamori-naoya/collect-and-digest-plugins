@@ -1,0 +1,7 @@
+{"schema":2,"upstream":{"repository":"https://github.com/nakamori-naoya/harness-plugins","commit":"10852c3365df0c454160082b1458ca381e5d3dab","copied_at":"2026-08-26"},"plugins":[
+  {"name":"meeting-collect","version":"0.6.13","path":"plugins/skills/collection/meeting-collect"},
+  {"name":"session-collect","version":"0.1.2","path":"plugins/skills/collection/session-collect"},
+  {"name":"slack-collect","version":"0.6.15","path":"plugins/skills/collection/slack-collect"},
+  {"name":"digest","version":"0.12.0","path":"plugins/playbooks/collection/digest"},
+  {"name":"session-digest","version":"0.2.0","path":"plugins/playbooks/collection/session-digest"}
+],"external_dependencies":[{"marketplace":"write-doc","plugin":"write-doc","version":"0.6.0"},{"marketplace":"write-doc","plugin":"writing-rules","version":"0.4.15"}]}

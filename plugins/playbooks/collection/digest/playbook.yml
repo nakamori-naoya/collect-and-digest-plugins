@@ -1,0 +1,41 @@
+# digest — 収集物から資料を1本作る。
+#
+# **この playbook は個々の手順を知らない。** 何を、どの順で呼ぶかだけを持つ。
+version: 2
+name: digest
+description: 収集物から資料を1本作る
+instructions:
+  execution:
+    directive: stepsを上から順に実行し、needsを前工程のprovidesから受け取る
+
+requires:
+  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+
+# sources: 全digestが読む置き場。output: 完成資料の保存先・形式・theme。
+# digests: 期間・型・追加promptを持つ実行定義一覧。
+sources: []
+labels: []
+output:
+  dir: docs
+  format: html
+  theme: dark
+digests: []
+
+# stepsは上から実行する。needsは開始条件、providesは次工程へ渡す成果物。
+steps:
+  - id: material
+    script: scripts/material.py
+    purpose: 置き場と期間から素材を選ぶ
+    provides: [items, skipped, period, type, output, prompt]
+
+  - id: meta
+    script: scripts/doc-meta.py
+    purpose: 資料の末尾に載せる静的情報の骨格を作る（参加者は書き手が埋める）
+    needs: [items, period]
+    provides: [meta]
+
+  - id: document
+    playbook: write-doc
+    purpose: 素材、型、追加指示を渡して資料を書かせる
+    needs: [items, period, type, output, prompt, meta]
+    provides: [path]

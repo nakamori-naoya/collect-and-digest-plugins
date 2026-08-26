@@ -1,0 +1,37 @@
+version: 2
+name: session-digest
+description: 対象日に活動したエージェントセッションの日次要約を作る
+instructions:
+  execution:
+    directive: 原文を永続化せず、非公開索引が指す正本を要約工程でだけ読み、stepsを上から順に実行する
+requires:
+  - {plugin: session-collect, marketplace: collection, version: 0.1.2}
+  - {plugin: writing-rules, marketplace: write-doc, version: 0.4.15}
+output:
+  dir: ~/agent-session-digests
+  format: markdown
+  timezone: Asia/Tokyo
+  max_chars_per_session: 400
+  subagents: exclude
+steps:
+  - id: collect
+    skill: collect-sessions
+    purpose: 対象日に活動したセッション索引を確定する
+    provides: [index, target_date, provisional]
+  - id: material
+    script: scripts/material.py
+    purpose: 正本参照を非公開の一時materialへまとめる
+    needs: [index, target_date, provisional]
+    provides: [items, input_hash, target_date, session_count]
+  - id: draft
+    skill: write-with-rules
+    purpose: 再利用可能な構造を持つ日次本文と根拠metadataを書く
+    needs: [items, input_hash, target_date]
+    provides: [body, metadata]
+  - id: store
+    script: scripts/store.py
+    purpose: front matterを付け、既存を黙って上書きせず日次Markdownを保存する
+    needs: [body, metadata, input_hash, target_date, session_count]
+    provides: [path]
+contract:
+  session_item_fields: [source, source_id, source_path, source_fingerprint, relation, parent_source_id, target_date, display, observed_at, collector]

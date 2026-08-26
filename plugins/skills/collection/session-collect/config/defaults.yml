@@ -1,0 +1,19 @@
+version: 1
+state_dir: ~/.local/state/harness-plugins/session-collect
+timezone: Asia/Tokyo
+sources:
+  claude_code:
+    enabled: true
+    root: ~/.claude/projects
+  codex:
+    enabled: true
+    root: ~/.codex/sessions
+collection:
+  include_subagents: true
+  max_scan_files: 5000
+  max_source_bytes: 52428800
+  stable_read_retries: 3
+  quiescent_after_minutes: 30
+instructions:
+  collection:
+    directive: セッション原文を複製せず、決定的メタデータと正本への非公開参照だけを日付別索引へ記録する

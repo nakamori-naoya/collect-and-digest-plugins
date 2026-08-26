@@ -1,0 +1,20 @@
+{
+  "name": "session-collect",
+  "version": "0.1.2",
+  "description": "Claude Code / Codex のローカルセッションを、原文を複製せず日付別の索引として収集する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Session Collect",
+    "shortDescription": "Claude Code / Codex のローカルセッションを、原文を複製せず日付別の索引として収集する。",
+    "longDescription": "Claude Code / Codex のローカルセッションを、原文を複製せず日付別の索引として収集する。",
+    "developerName": "NaoyaNakamori",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "session-collectを使ってこの作業を進めてください。"
+  }
+}
