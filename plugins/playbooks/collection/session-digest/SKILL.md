@@ -30,7 +30,7 @@ trap 'rm -f "$CFG_FILE"' EXIT
 本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
 <!-- END shared:skill-entry/config-load -->
 
-`${.instructions.execution.directive}` / `${.playbook.output.dir}` / `${.playbook.output.timezone}` / `${.playbook.output.max_chars_per_session}` / `${.playbook.output.subagents}` / `${.playbook.steps}`に従う。
+`${.instructions.execution.directive}` / `${.playbook.output.dir}` / `${.playbook.output.timezone}` / `${.playbook.output.max_chars_per_session}` / `${.playbook.output.subagents}` / `${.playbook.contract}` / `${.playbook.steps}`に従う。資料化と保存は`${.deps.write-doc.root}`のplaybookを使い、このskillから`writing-rules`や`doc-render`を直接呼ばない。
 
 **各工程を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。入れ子の段取りへは受け取ったscopeをそのまま渡し、自分の名前で作り直さない。
 
@@ -48,10 +48,12 @@ python3 "${PLUGIN_ROOT}/scripts/material.py" \
 
 `${.playbook.output.subagents}`が`include`のときだけ`--include-subagents`を付ける。
 
-## 3. 要約する
+## 3. write-docへ資料化を委譲する
 
 material内の`source_path`は要約時だけ読む。全文や中間要約を保存しない。何を残し、何を混入させないかは[privacy境界](references/privacy.md)、本文・metadata・タグの形は[日次記録の契約](references/output.md)に従う。1セッションの本文は`${.playbook.output.max_chars_per_session}`以内とし、超過時はtruncateせず書き直す。
 
-成果物は`<output.dir>/<対象日>.md`。既存内容のinput hashが変わる場合は黙って上書きせず、明示的なforceを要求する。0件では空の成果物を書かない。
+`${.playbook.contract.document_type}`を指定済みの型、上記2つのreferenceを追加指示、materialのitemsを素材として`write-doc`を実行する。`output_format`は`${.playbook.output.format}`、出力directoryは`${.playbook.output.dir}`、ファイル名は`${.playbook.contract.output_name}`の`<target_date>`を対象日へ置換した値として渡す。型を選び直させず、別の資料化工程を挟まない。
 
-storeへ本文とmetadataの2ファイルを渡す。metadataの検証状態は実際に確認したものだけ`passed`とし、未確認を成功扱いしない。
+成果物は`<output.dir>/<対象日>.md`。既存資料がある場合は、`write-doc`の上書きguardに従ってまず既存を読み、front matterの`input_hash`を比較する。同じなら変更せず終了し、異なるなら利用者からその既存pathの更新が明示されている場合だけ`update_target`として`write-doc`へ渡す。独自の保存scriptやforceオプションは使わない。0件では空の成果物を書かない。
+
+資料化が完了したらmaterialを削除する。最終Markdown以外の本文ファイルやmetadataファイルを永続化しない。

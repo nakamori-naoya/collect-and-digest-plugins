@@ -101,5 +101,17 @@ done < <(find "$ROOT/plugins/playbooks" -name playbook.yml -type f 2>/dev/null |
 while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.sh' | sort)
 while IFS= read -r script; do PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 -m py_compile "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.py' | sort)
 validate_dependency_resolution_contract || failed=1
+session_digest="$ROOT/plugins/playbooks/collection/session-digest"
+if yq -o=json -I=0 '.' "$session_digest/playbook.yml" | jq -e '
+    (.requires | any(.plugin=="write-doc" and .marketplace=="write-doc")) and
+    (.requires | all(.plugin!="writing-rules")) and
+    (.steps | any(.id=="document" and .playbook=="write-doc")) and
+    (.steps | all(.id!="draft" and .id!="store"))' >/dev/null \
+  && [ ! -e "$session_digest/scripts/store.py" ] \
+  && rg -F '最終Markdownの保存は`write-doc`だけが行う' "$session_digest/references/output.md" >/dev/null; then
+  :
+else
+  failed=1
+fi
 if [ "$failed" -eq 0 ]; then echo 'Validation: passed'; else echo 'Validation: failed'; fi
 [ "$failed" -eq 0 ]

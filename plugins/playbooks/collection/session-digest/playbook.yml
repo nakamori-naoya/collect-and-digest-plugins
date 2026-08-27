@@ -6,7 +6,7 @@ instructions:
     directive: 原文を永続化せず、非公開索引が指す正本を要約工程でだけ読み、stepsを上から順に実行する
 requires:
   - {plugin: session-collect, marketplace: collect-and-digest}
-  - {plugin: writing-rules, marketplace: write-doc}
+  - {plugin: write-doc, marketplace: write-doc}
 output:
   dir: ~/agent-session-digests
   format: markdown
@@ -23,15 +23,12 @@ steps:
     purpose: 正本参照を非公開の一時materialへまとめる
     needs: [index, target_date, provisional]
     provides: [items, input_hash, target_date, session_count]
-  - id: draft
-    skill: write-with-rules
-    purpose: 再利用可能な構造を持つ日次本文と根拠metadataを書く
-    needs: [items, input_hash, target_date]
-    provides: [body, metadata]
-  - id: store
-    script: scripts/store.py
-    purpose: front matterを付け、既存を黙って上書きせず日次Markdownを保存する
-    needs: [body, metadata, input_hash, target_date, session_count]
+  - id: document
+    playbook: write-doc
+    purpose: 日次記録の契約とprivacy境界を追加指示として渡し、Markdownを書いて保存する
+    needs: [items, input_hash, target_date, session_count]
     provides: [path]
 contract:
   session_item_fields: [source, source_id, source_path, source_fingerprint, relation, parent_source_id, target_date, display, observed_at, collector]
+  document_type: period-digest
+  output_name: <target_date>.md

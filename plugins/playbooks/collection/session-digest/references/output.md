@@ -14,9 +14,9 @@
 
 会話の時系列や発言の言い換えではなく、後から仕事へ再利用できる事実と判断を書く。1セッションの本文全体を設定された文字数内に収める。
 
-## 根拠metadata
+## front matter
 
-本文とは別のJSONファイルを作り、`schema: 1`、`summary_schema`、`sessions`、`generator`、`validation`、`human_reviewed`、`tags`を持たせる。
+最終Markdownのfront matterに`schema: 2`、`kind: agent-session-digest`、`target_date`、`timezone`、`input_hash`、`generated_at`、`session_count`、`summary_schema`、`sessions`、`generator`、`validation`、`human_reviewed`、`tags`を持たせる。本文とは別のmetadataファイルを作らない。
 
 - `sessions`: `source`、不透明化済み`source_id`、索引の`observed_at`。どのセッションをいつ収集したかを残す。
 - `generator`: 実際に要約した`model`と、この契約を指す`prompt_ref`。不明な値を推測しない。
@@ -26,4 +26,8 @@
 
 タグは将来の日次横断集約に使う。原文から顧客名、repository名、案件名を推測して入れない。利用者が設定または依頼で明示した公開可能なaliasだけを使い、それ以外は空配列にする。文章ではなく短く安定した値にし、同じ対象へ表記揺れを作らない。
 
-storeはmetadataを検証し、schema 2のfront matterへ写す。materialファイルとmetadataファイルは0600で作り、store完了後に削除する。生成要約も原文と同じ機密度として扱う。
+`write-doc`へ渡す前に各値をこの契約に照らして検査し、失敗状態を含む資料は保存しない。materialファイルは0600で作り、資料化完了後に削除する。生成要約も原文と同じ機密度として扱う。
+
+## 保存契約
+
+最終Markdownの保存は`write-doc`だけが行う。新規作成では`<target_date>.md`をnameとして渡し、既存資料の更新では確認済みの絶対pathを`update_target`として渡す。session-digest固有の保存・置換scriptは持たない。
