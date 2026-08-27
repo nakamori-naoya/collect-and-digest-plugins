@@ -2,6 +2,30 @@
 
 会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。
 
+## インストール
+
+Codexでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+
+```bash
+codex plugin marketplace add nakamori-naoya/collect-and-digest-plugins
+codex plugin add meeting-collect@collect-and-digest
+codex plugin add session-collect@collect-and-digest
+codex plugin add slack-collect@collect-and-digest
+codex plugin add digest@collect-and-digest
+codex plugin add session-digest@collect-and-digest
+```
+
+Claude Codeでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+
+```bash
+claude plugin marketplace add nakamori-naoya/collect-and-digest-plugins
+claude plugin install meeting-collect@collect-and-digest
+claude plugin install session-collect@collect-and-digest
+claude plugin install slack-collect@collect-and-digest
+claude plugin install digest@collect-and-digest
+claude plugin install session-digest@collect-and-digest
+```
+
 ## インストール済みである必要があるplugin
 
 このrepository外の依存だけを記載する。
