@@ -2,7 +2,7 @@
 
 `session-collect`の非公開索引から、対象日に活動したセッションごとの短い要約を日次Markdownへ保存するplaybook。セッション原文は保存しない。
 
-必要なプラグインは`session-collect`と`writing-rules`。欠けていれば停止する。
+必要なプラグインは`session-collect@collect-and-digest`と`writing-rules@write-doc`。versionは固定せず、解決先のmanifest identityと必要なskillを検査する。どちらかが欠けていれば停止する。
 
 ```yaml
 output:

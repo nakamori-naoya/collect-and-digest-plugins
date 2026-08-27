@@ -49,12 +49,13 @@ $ material.py list --digest weekly
 `<repo>/.harness-plugins/digest.config.yml`。同梱`playbook.yml`を丸ごと複製し、完全な設定として編集する。工程だけの部分設定は使えない。
 
 ```yaml
-version: 1
+version: 2
 name: digest
 description: 収集物から資料を1本作る
 instructions:
   execution: {directive: stepsを上から順に実行し、needsを前工程のprovidesから受け取る}
-requires: [write-doc]
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
 
 output:                 # 全体の既定
   dir: docs
@@ -89,6 +90,8 @@ steps:                     # 同梱playbook.ymlのsteps全体を持つ
   - {id: meta, script: scripts/doc-meta.py, purpose: 静的情報の骨格を作る, needs: [items, period], provides: [meta]}
   - {id: document, playbook: write-doc, purpose: 素材と型から資料を書く, needs: [items, period, type, output, prompt, meta], provides: [path]}
 ```
+
+`requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時に選んだmanifestのidentityと、工程が指すskillやplaybookの存在を検査する。
 
 | キー | 意味 |
 |---|---|

@@ -72,10 +72,9 @@ jq -e --arg expected "$name" --argjson bundled "$bundled" '
   (.requires | type=="array" and length>0 and
     all(.[];
       type=="object" and
-      ((keys|sort)==["marketplace","plugin","version"]) and
+      ((keys|sort)==["marketplace","plugin"]) and
       (.plugin|type=="string" and test("^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$")) and
-      (.marketplace|type=="string" and test("^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$")) and
-      (.version|type=="string" and test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"))) and
+      (.marketplace|type=="string" and test("^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$"))) and
     ((map(.plugin)|length)==(map(.plugin)|unique|length))) and
   (.requires==$bundled.requires) and
   (.steps|type=="array" and length>0 and all(.[];
@@ -131,11 +130,11 @@ done
 dependency_resolver="$PB_ROOT/scripts/resolve-dependency.py"
 [ -f "$dependency_resolver" ] || { echo "[error:dependency-invalid] resolver-missing=$dependency_resolver" >&2; exit 2; }
 deps='{}'
-while IFS=$'\t' read -r dep market version; do
+while IFS=$'\t' read -r dep market; do
   candidate=$(python3 "$dependency_resolver" --plugin-root "$PB_ROOT" \
-    --plugin "$dep" --marketplace "$market" --version "$version") || exit 2
+    --plugin "$dep" --marketplace "$market") || exit 2
   deps=$(jq -c --arg k "$dep" --argjson v "$candidate" '.[$k]=$v' <<<"$deps") || exit 2
-done < <(jq -r '.requires[] | [.plugin,.marketplace,.version] | @tsv' <<<"$pb")
+done < <(jq -r '.requires[] | [.plugin,.marketplace] | @tsv' <<<"$pb")
 
 # requires はプラグイン名、steps[].skill はスキル名で、名前空間が違う。
 # **両方を検査しないと片方だけが素通りする。** requires を通っても、steps が

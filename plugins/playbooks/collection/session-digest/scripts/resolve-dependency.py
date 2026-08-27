@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve one qualified plugin dependency without scanning unrelated marketplaces."""
+"""Resolve one name-qualified plugin dependency without pinning its version."""
 
 from __future__ import annotations
 
@@ -70,9 +70,9 @@ def validate_candidate(
     root: Path,
     runtime: str,
     plugin: str,
-    version: str,
     source_kind: str,
     containment: Path | None = None,
+    expected_directory_version: str | None = None,
 ) -> dict[str, str]:
     try:
         canonical = root.resolve(strict=True)
@@ -88,8 +88,13 @@ def validate_candidate(
     if not manifest.is_file() or manifest.is_symlink():
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-missing")
     data = load_json(manifest, "dependency-invalid")
-    if not isinstance(data, dict) or data.get("name") != plugin or data.get("version") != version:
+    if not isinstance(data, dict) or data.get("name") != plugin:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-identity-mismatch")
+    version = data.get("version")
+    if not isinstance(version, str) or not SEMVER.fullmatch(version):
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-version-invalid")
+    if expected_directory_version is not None and version != expected_directory_version:
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="cache-version-mismatch")
     return {
         "plugin": plugin,
         "version": version,
@@ -100,7 +105,7 @@ def validate_candidate(
     }
 
 
-def dev_candidate(identity: str, runtime: str, plugin: str, version: str) -> dict[str, str] | None:
+def dev_candidate(identity: str, runtime: str, plugin: str) -> dict[str, str] | None:
     raw = os.environ.get("HARNESS_PLUGIN_DEV_ROOTS", "")
     if not raw:
         return None
@@ -113,12 +118,10 @@ def dev_candidate(identity: str, runtime: str, plugin: str, version: str) -> dic
         return None
     if not isinstance(root, str) or not Path(root).is_absolute():
         fail("dependency-invalid", plugin=plugin, source_kind="dev-map", reason="root-must-be-absolute")
-    return validate_candidate(Path(root), runtime, plugin, version, "dev-map")
+    return validate_candidate(Path(root), runtime, plugin, "dev-map")
 
 
-def repository_candidate(
-    plugin_root: Path, marketplace: str, runtime: str, plugin: str, version: str
-) -> dict[str, str] | None:
+def repository_candidate(plugin_root: Path, marketplace: str, runtime: str, plugin: str) -> dict[str, str] | None:
     rel_market = Path(".agents/plugins/marketplace.json") if runtime == "codex" else Path(".claude-plugin/marketplace.json")
     for ancestor in (plugin_root, *plugin_root.parents):
         manifest = ancestor / rel_market
@@ -128,7 +131,7 @@ def repository_candidate(
         if not isinstance(data, dict) or data.get("name") != marketplace:
             return None
         matches = [item for item in data.get("plugins", []) if isinstance(item, dict) and item.get("name") == plugin]
-        if len(matches) != 1 or matches[0].get("version") != version:
+        if len(matches) != 1:
             fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="marketplace-entry")
         source = matches[0].get("source")
         if runtime == "codex":
@@ -139,11 +142,26 @@ def repository_candidate(
             if not isinstance(source, str):
                 fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="source")
             relative = source
-        return validate_candidate(ancestor / relative, runtime, plugin, version, "repository", ancestor)
+        return validate_candidate(ancestor / relative, runtime, plugin, "repository", ancestor)
     return None
 
 
-def cache_candidate(marketplace: str, runtime: str, plugin: str, version: str) -> dict[str, str] | None:
+def semver_key(value: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]] | None:
+    matched = SEMVER.fullmatch(value)
+    if matched is None:
+        return None
+    core_and_pre = value.split("+", 1)[0]
+    core, separator, prerelease = core_and_pre.partition("-")
+    major, minor, patch = (int(part) for part in core.split("."))
+    if not separator:
+        return major, minor, patch, 1, ()
+    identifiers: list[tuple[int, int | str]] = []
+    for part in prerelease.split("."):
+        identifiers.append((0, int(part)) if part.isdigit() else (1, part))
+    return major, minor, patch, 0, tuple(identifiers)
+
+
+def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, str] | None:
     override = os.environ.get("HARNESS_PLUGIN_CACHE_ROOT", "")
     if override:
         cache = Path(override)
@@ -151,10 +169,25 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str, version: str) -
         cache = Path(os.environ.get("CODEX_PLUGIN_CACHE", Path.home() / ".codex/plugins/cache"))
     else:
         cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
-    candidate = cache / marketplace / plugin / version
-    if not candidate.exists():
+    plugin_cache = cache / marketplace / plugin
+    if not plugin_cache.is_dir():
         return None
-    return validate_candidate(candidate, runtime, plugin, version, "installed-cache", cache)
+    candidates = [
+        (key, child)
+        for child in plugin_cache.iterdir()
+        if child.is_dir() and (key := semver_key(child.name)) is not None
+    ]
+    if not candidates:
+        return None
+    _, candidate = max(candidates, key=lambda item: (item[0], item[1].name))
+    return validate_candidate(
+        candidate,
+        runtime,
+        plugin,
+        "installed-cache",
+        cache,
+        expected_directory_version=candidate.name,
+    )
 
 
 def main() -> int:
@@ -162,24 +195,22 @@ def main() -> int:
     parser.add_argument("--plugin-root", required=True)
     parser.add_argument("--plugin", required=True)
     parser.add_argument("--marketplace", required=True)
-    parser.add_argument("--version", required=True)
     args = parser.parse_args()
-    if not IDENTIFIER.fullmatch(args.plugin) or not IDENTIFIER.fullmatch(args.marketplace) or not SEMVER.fullmatch(args.version):
-        fail("dependency-invalid", plugin=args.plugin, marketplace=args.marketplace, version=args.version, reason="identity")
+    if not IDENTIFIER.fullmatch(args.plugin) or not IDENTIFIER.fullmatch(args.marketplace):
+        fail("dependency-invalid", plugin=args.plugin, marketplace=args.marketplace, reason="identity")
     plugin_root = Path(args.plugin_root).resolve(strict=True)
     runtime = runtime_for(plugin_root)
-    identity = f"{args.marketplace}/{args.plugin}/{args.version}"
-    candidate = dev_candidate(identity, runtime, args.plugin, args.version)
+    identity = f"{args.marketplace}/{args.plugin}"
+    candidate = dev_candidate(identity, runtime, args.plugin)
     if candidate is None:
-        candidate = repository_candidate(plugin_root, args.marketplace, runtime, args.plugin, args.version)
+        candidate = repository_candidate(plugin_root, args.marketplace, runtime, args.plugin)
     if candidate is None:
-        candidate = cache_candidate(args.marketplace, runtime, args.plugin, args.version)
+        candidate = cache_candidate(args.marketplace, runtime, args.plugin)
     if candidate is None:
         fail(
             "dependency-missing",
             plugin=args.plugin,
             marketplace=args.marketplace,
-            version=args.version,
             runtime=runtime,
             install=f"{args.plugin}@{args.marketplace}",
         )

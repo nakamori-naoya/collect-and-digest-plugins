@@ -33,6 +33,8 @@ claude plugin install session-digest@collect-and-digest
 - `write-doc@write-doc`
 - `writing-rules@write-doc`
 
+playbookの依存は`plugin@marketplace`のidentityだけを宣言し、versionは固定しない。開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
+
 ## 設定の上書きと優先順位
 
 設定を持つpluginは、優先順位が最も高い1ファイルだけを選ぶ。複数層をマージしないため、上書きするYAMLには同梱設定と同じ必須項目をすべて含める。必須項目の不足、未知のキー、許可されていない値があれば実行を停止する。

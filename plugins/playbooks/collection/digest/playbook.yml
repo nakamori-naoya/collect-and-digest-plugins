@@ -9,7 +9,7 @@ instructions:
     directive: stepsを上から順に実行し、needsを前工程のprovidesから受け取る
 
 requires:
-  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+  - {plugin: write-doc, marketplace: write-doc}
 
 # sources: 全digestが読む置き場。output: 完成資料の保存先・形式・theme。
 # digests: 期間・型・追加promptを持つ実行定義一覧。
