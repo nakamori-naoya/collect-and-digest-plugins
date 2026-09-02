@@ -89,3 +89,7 @@ skillでは、同梱設定の `prompt_parameters` に宣言されたpathだけ�
 ```bash
 bash scripts/validate.sh
 ```
+
+## 業務知識
+
+- [収集とダイジェスト作成の業務知識と振る舞い](docs/2026-09-02-収集とダイジェスト作成-業務知識と振る舞い.md)
