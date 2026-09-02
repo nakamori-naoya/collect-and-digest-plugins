@@ -82,6 +82,56 @@ validate_dependency_resolution_contract() {
 
   return "$status"
 }
+
+validate_session_digest_material_fixture() {
+  local fixture="$TMP_ROOT/session-digest-material"
+  local script="$ROOT/plugins/playbooks/collection/session-digest/scripts/material.py"
+  local material="$fixture/private/session-material-fixture.json"
+  local output="$fixture/final.md"
+  local index="$fixture/index.jsonl"
+  local status=0 out
+  mkdir -p "$fixture/private" "$fixture/non-git"
+  fixture=$(cd "$fixture" && pwd -P)
+  material="$fixture/private/session-material-fixture.json"
+  output="$fixture/final.md"
+  index="$fixture/index.jsonl"
+  chmod 700 "$fixture/private"
+  printf '%s\n' 'final' > "$output"
+  printf '%s\n' 'index' > "$index"
+
+  make_material() { printf '%s\n' 'material' > "$1"; chmod 600 "$1"; }
+  cleanup_ok() { python3 "$script" --cleanup --material-path "$1" --path "$output" --index "$index"; }
+  cleanup_rejected() { if cleanup_ok "$1" >/dev/null 2>&1; then return 1; fi; [ -e "$1" ] || [ -L "$1" ]; }
+
+  make_material "$material"
+  out=$(cleanup_ok "$material") || status=1
+  jq -e '.decision=="removed"' <<<"$out" >/dev/null || status=1
+  [ ! -e "$material" ] || status=1
+  out=$(cleanup_ok "$material") || status=1
+  jq -e '.decision=="missing"' <<<"$out" >/dev/null || status=1
+
+  make_material "$material"
+  ln -s "$material" "$fixture/private/session-material-link.json"
+  cleanup_rejected "$fixture/private/session-material-link.json" || status=1
+  chmod 644 "$material"; cleanup_rejected "$material" || status=1; chmod 600 "$material"
+  chmod 755 "$fixture/private"; cleanup_rejected "$material" || status=1; chmod 700 "$fixture/private"
+  mkdir "$fixture/danger-root"; chmod 700 "$fixture/danger-root"
+  make_material "$fixture/danger-root/session-material-dangerous.json"
+  if TMPDIR="$fixture/danger-root" python3 "$script" --cleanup --material-path "$fixture/danger-root/session-material-dangerous.json" --path "$output" --index "$index" >/dev/null 2>&1; then status=1; fi
+  [ -e "$fixture/danger-root/session-material-dangerous.json" ] || status=1
+  if python3 "$script" --cleanup --material-path "$material" --path "$fixture/absent.md" --index "$index" >/dev/null 2>&1; then status=1; fi
+  if python3 "$script" --cleanup --material-path "$material" --path "$material" --index "$index" >/dev/null 2>&1; then status=1; fi
+  mkdir "$fixture/private/session-material-directory.json"
+  cleanup_rejected "$fixture/private/session-material-directory.json" || status=1
+  make_material "$fixture/private/not-session-material.json"
+  cleanup_rejected "$fixture/private/not-session-material.json" || status=1
+
+  printf '%s\n' '{"schema":1,"source":"fixture","source_id":"root","activity_dates":["2026-09-02"],"relation":"root","parent_source_id":null,"state":"quiescent","provisional":false,"source_ref":{"path":"'"$fixture/source.jsonl"'","fingerprint":"fixture"},"observed_at":"2026-09-02T00:00:00Z","collector":"fixture"}' > "$fixture/day-index.jsonl"
+  printf '%s\n' '{}' > "$fixture/source.jsonl"
+  (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02 --out-dir "$fixture/generated") > "$fixture/generated.json" || status=1
+  jq -e '.decision=="written" and (.artifact.material_path|startswith("'"$fixture"'"))' "$fixture/generated.json" >/dev/null || status=1
+  return "$status"
+}
 jq -r '.plugins[].name' "$ROOT/.agents/plugins/marketplace.json" | sort > "$TMP_ROOT/expected"
 find "$ROOT/plugins" -path '*/.codex-plugin/plugin.json' -type f -exec jq -r '.name' {} \; | sort > "$TMP_ROOT/actual"
 diff -u "$TMP_ROOT/expected" "$TMP_ROOT/actual" >/dev/null || failed=1
@@ -101,14 +151,21 @@ done < <(find "$ROOT/plugins/playbooks" -name playbook.yml -type f 2>/dev/null |
 while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.sh' | sort)
 while IFS= read -r script; do PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 -m py_compile "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.py' | sort)
 validate_dependency_resolution_contract || failed=1
+validate_session_digest_material_fixture || failed=1
 session_digest="$ROOT/plugins/playbooks/collection/session-digest"
 if yq -o=json -I=0 '.' "$session_digest/playbook.yml" | jq -e '
     (.requires | any(.plugin=="write-doc" and .marketplace=="write-doc")) and
     (.requires | all(.plugin!="writing-rules")) and
     (.steps | any(.id=="document" and .playbook=="write-doc")) and
+    (.steps | any(.id=="material" and (.provides | index("material_path")))) and
+    (.steps[-1].id=="cleanup" and .steps[-1].script=="scripts/material.py" and .steps[-1].provides==["cleanup_report"]) and
+    (.steps[-1].needs | sort==["index","material_path","path"]) and
     (.steps | all(.id!="draft" and .id!="store"))' >/dev/null \
   && [ ! -e "$session_digest/scripts/store.py" ] \
-  && rg -F '最終Markdownの保存は`write-doc`だけが行う' "$session_digest/references/output.md" >/dev/null; then
+  && rg -F '最終Markdownの保存は`write-doc`だけが行う' "$session_digest/references/output.md" >/dev/null \
+  && rg -F -- '--out-dir ~/.local/state/harness-plugins/session-digest/material' "$session_digest/SKILL.md" >/dev/null \
+  && rg -F -- 'material.py" --cleanup' "$session_digest/SKILL.md" >/dev/null \
+  && rg -F '出力JSON全体を`cleanup_report`として扱う。cleanupはmaterial file 1件だけをunlinkし、0700の実行専用directoryは残す。' "$session_digest/SKILL.md" "$session_digest/references/output.md" >/dev/null; then
   :
 else
   failed=1

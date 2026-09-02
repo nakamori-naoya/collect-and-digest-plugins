@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from pathlib import Path
 
@@ -37,13 +38,75 @@ def private_output_dir(raw):
     return path
 
 
+def cleanup_path(raw_material, raw_path, raw_index):
+    """Remove one material file only after all private-file checks pass."""
+    material = Path(raw_material).expanduser().absolute()
+    try:
+        material_stat = os.lstat(material)
+    except FileNotFoundError:
+        print(json.dumps({"decision": "missing", "reason": "material is already absent",
+                          "artifact": {"material_path": str(material)}}, ensure_ascii=False))
+        return
+    except OSError as exc:
+        fail("material cannot be inspected: {}".format(exc))
+
+    if (not stat.S_ISREG(material_stat.st_mode) or stat.S_ISLNK(material_stat.st_mode) or
+            not material.name.startswith("session-material-") or not material.name.endswith(".json") or
+            material_stat.st_uid != os.geteuid() or stat.S_IMODE(material_stat.st_mode) != 0o600):
+        fail("material is not an owned private session material file")
+
+    parent = material.parent
+    try:
+        parent_stat = os.lstat(parent)
+    except OSError as exc:
+        fail("material parent cannot be inspected: {}".format(exc))
+    dangerous_parents = {"/", os.path.realpath(os.path.expanduser("~")),
+                         os.path.realpath(os.environ.get("TMPDIR", tempfile.gettempdir()))}
+    if (not stat.S_ISDIR(parent_stat.st_mode) or stat.S_ISLNK(parent_stat.st_mode) or
+            parent_stat.st_uid != os.geteuid() or stat.S_IMODE(parent_stat.st_mode) != 0o700 or
+            os.path.realpath(parent) in dangerous_parents):
+        fail("material parent is not an owned private directory")
+
+    keep_paths = {"path": Path(raw_path).expanduser().absolute(),
+                  "index": Path(raw_index).expanduser().absolute()}
+    for label, keep in keep_paths.items():
+        try:
+            keep_stat = os.lstat(keep)
+        except OSError:
+            fail("keep {} is absent".format(label))
+        if not stat.S_ISREG(keep_stat.st_mode) or stat.S_ISLNK(keep_stat.st_mode):
+            fail("keep {} is not a regular file".format(label))
+        if os.path.realpath(keep) == os.path.realpath(material):
+            fail("keep {} conflicts with material".format(label))
+
+    try:
+        os.unlink(material)
+    except OSError as exc:
+        fail("material cannot be removed: {}".format(exc))
+    print(json.dumps({"decision": "removed", "reason": "owned private material removed",
+                      "artifact": {"material_path": str(material)}}, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--day-index", required=True)
-    parser.add_argument("--date", required=True)
-    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--cleanup", action="store_true")
+    parser.add_argument("--material-path")
+    parser.add_argument("--path")
+    parser.add_argument("--index")
+    parser.add_argument("--day-index")
+    parser.add_argument("--date")
+    parser.add_argument("--out-dir")
     parser.add_argument("--include-subagents", action="store_true")
     args = parser.parse_args()
+    if args.cleanup:
+        if args.include_subagents or args.day_index or args.date or args.out_dir:
+            fail("cleanup accepts only material_path, path, and index")
+        if not args.material_path or not args.path or not args.index:
+            fail("cleanup requires material_path, path, and index")
+        cleanup_path(args.material_path, args.path, args.index)
+        return
+    if not args.day_index or not args.date or not args.out_dir:
+        fail("day-index, date, and out-dir are required")
     source = Path(args.day_index)
     if source.is_symlink() or not source.is_file():
         fail("day index is absent")
@@ -113,7 +176,7 @@ def main():
     with os.fdopen(fd, "wb") as handle:
         handle.write(encoded)
     print(json.dumps({"decision": "written", "reason": "private material prepared",
-        "artifact": {"material": path, "items": path, "target_date": args.date,
+        "artifact": {"material": path, "material_path": path, "items": path, "target_date": args.date,
                      "input_hash": input_hash, "session_count": len(root_ids)},
         "counts": {"items": len(records)}}, ensure_ascii=False))
 

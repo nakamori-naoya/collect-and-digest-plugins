@@ -22,12 +22,17 @@ steps:
     script: scripts/material.py
     purpose: 正本参照を非公開の一時materialへまとめる
     needs: [index, target_date, provisional]
-    provides: [items, input_hash, target_date, session_count]
+    provides: [items, material_path, input_hash, target_date, session_count]
   - id: document
     playbook: write-doc
     purpose: 日次記録の契約とprivacy境界を追加指示として渡し、Markdownを書いて保存する
     needs: [items, input_hash, target_date, session_count]
     provides: [path]
+  - id: cleanup
+    script: scripts/material.py
+    purpose: 最終資料の保存後、明示した今回のmaterialだけを安全に削除する
+    needs: [material_path, path, index]
+    provides: [cleanup_report]
 contract:
   session_item_fields: [source, source_id, source_path, source_fingerprint, relation, parent_source_id, target_date, display, observed_at, collector]
   document_type: period-digest

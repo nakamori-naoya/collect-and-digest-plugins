@@ -43,8 +43,10 @@ material工程ではsession-collectが返したday indexを次へ渡す。
 ```bash
 python3 "${PLUGIN_ROOT}/scripts/material.py" \
   --day-index <非公開日別索引> --date <YYYY-MM-DD> \
-  --out-dir <非公開一時directory>
+  --out-dir ~/.local/state/harness-plugins/session-digest/material
 ```
+
+`--out-dir`はrepository外の実行専用subdirectoryに固定する。HOME、TMPDIR root、共有directoryそのものは渡さない。
 
 `${.playbook.output.subagents}`が`include`のときだけ`--include-subagents`を付ける。
 
@@ -56,4 +58,11 @@ material内の`source_path`は要約時だけ読む。全文や中間要約を�
 
 成果物は`<output.dir>/<対象日>.md`。既存資料がある場合は、`write-doc`の上書きguardに従ってまず既存を読み、front matterの`input_hash`を比較する。同じなら変更せず終了し、異なるなら利用者からその既存pathの更新が明示されている場合だけ`update_target`として`write-doc`へ渡す。独自の保存scriptやforceオプションは使わない。0件では空の成果物を書かない。
 
-資料化が完了したらmaterialを削除する。最終Markdown以外の本文ファイルやmetadataファイルを永続化しない。
+cleanupはdocumentが返した`path`とcollectが返した`index`、今回の`material_path`が揃った後にだけ最終stepとして実行する。3つの明示pathを`material.py --cleanup`へ渡す。
+
+```bash
+python3 "${PLUGIN_ROOT}/scripts/material.py" --cleanup \
+  --material-path <material_path> --path <path> --index <index>
+```
+
+出力JSON全体を`cleanup_report`として扱う。cleanupはmaterial file 1件だけをunlinkし、0700の実行専用directoryは残す。
