@@ -9,6 +9,7 @@ __pycache__/
 !/.agents/
 !/.claude-plugin/
 !/.harness-plugins/
+!/.github/
 !/plugins/
 !/scripts/
 !/shared/
