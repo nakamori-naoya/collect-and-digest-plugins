@@ -7,6 +7,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 failed=0
 
 python3 "$ROOT/scripts/validate-distribution.py" "$ROOT" || failed=1
+python3 "$ROOT/scripts/validate-distribution.py" --self-test "$ROOT" || failed=1
 
 validate_dependency_resolution_contract() {
   local resolver="$ROOT/shared/playbook/resolve-dependency.py"
