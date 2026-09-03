@@ -1,6 +1,6 @@
 {
   "name": "session-digest",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "session-collectの非公開索引から対象日のセッションを選び、write-docでIDと短い要約を持つ日次記録を作る。",
   "skills": "./skills",
   "author": {

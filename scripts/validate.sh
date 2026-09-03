@@ -6,6 +6,8 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plugin-repository-validation.XXXXXX") || e
 trap 'rm -rf "$TMP_ROOT"' EXIT
 failed=0
 
+python3 "$ROOT/scripts/validate-distribution.py" "$ROOT" || failed=1
+
 validate_dependency_resolution_contract() {
   local resolver="$ROOT/shared/playbook/resolve-dependency.py"
   local fixture="$TMP_ROOT/dependency-resolution"
