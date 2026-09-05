@@ -247,16 +247,23 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, st
         cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
     marketplace_component = os.path.basename(marketplace)
     plugin_component = os.path.basename(plugin)
+    if "/" in marketplace or "\\" in marketplace or ".." in marketplace:
+        fail("dependency-invalid", marketplace=marketplace, reason="identity")
+    if "/" in plugin or "\\" in plugin or ".." in plugin:
+        fail("dependency-invalid", plugin=plugin, reason="identity")
     if marketplace_component != marketplace or not IDENTIFIER.fullmatch(marketplace_component):
         fail("dependency-invalid", marketplace=marketplace, reason="identity")
     if plugin_component != plugin or not IDENTIFIER.fullmatch(plugin_component):
         fail("dependency-invalid", plugin=plugin, reason="identity")
     cache_boundary = os.path.realpath(os.fspath(cache))
-    allowed_roots = tuple(
-        os.path.realpath(path)
-        for path in (os.path.expanduser("~"), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
-    )
-    if not any(cache_boundary == root or cache_boundary.startswith(root + os.sep) for root in allowed_roots):
+    if not (
+        cache_boundary.startswith("/Users/")
+        or cache_boundary.startswith("/home/")
+        or cache_boundary.startswith("/tmp/")
+        or cache_boundary.startswith("/private/tmp/")
+        or cache_boundary.startswith("/var/folders/")
+        or cache_boundary.startswith("/private/var/folders/")
+    ):
         fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="cache-root-outside-allowed-roots")
     plugin_cache = os.path.realpath(os.path.join(cache_boundary, marketplace_component, plugin_component))
     if not plugin_cache.startswith(cache_boundary + os.sep):
