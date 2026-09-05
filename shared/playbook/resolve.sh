@@ -18,7 +18,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 repo=""; explain=0; scope_root=""; scope_given=0
 for arg in "$@"; do
