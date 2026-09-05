@@ -12,9 +12,9 @@
 - 複数の収集directoryから日次、週次、月次のdigestを作りたい
 - 決定事項だけ、または未決の論点だけを期間横断で追いたい
 
-## どのpluginを使うか
+## どの機能を使うか
 
-| 欲しい結果 | 選ぶplugin |
+| 欲しい結果 | 選ぶ機能 |
 |---|---|
 | 対象日の会議原文を集める | `meeting-collect` |
 | 自分が関わったSlack threadを集める | `slack-collect` |
@@ -46,11 +46,7 @@ Codexのpluginコマンドには`--scope`がない。通常の手順はuser単�
 
 ```bash
 codex plugin marketplace add nakamori-naoya/collect-and-digest-plugins
-codex plugin add meeting-collect@collect-and-digest
-codex plugin add session-collect@collect-and-digest
-codex plugin add slack-collect@collect-and-digest
-codex plugin add digest@collect-and-digest
-codex plugin add session-digest@collect-and-digest
+codex plugin add collect-and-digest@collect-and-digest
 ```
 
 このrepositoryだけに分離したい場合は、repository専用の`CODEX_HOME`を作り、インストール時と利用時に同じ値を指定する。
@@ -60,11 +56,7 @@ mkdir -p .codex-home
 export CODEX_HOME="$PWD/.codex-home"
 
 codex plugin marketplace add nakamori-naoya/collect-and-digest-plugins
-codex plugin add meeting-collect@collect-and-digest
-codex plugin add session-collect@collect-and-digest
-codex plugin add slack-collect@collect-and-digest
-codex plugin add digest@collect-and-digest
-codex plugin add session-digest@collect-and-digest
+codex plugin add collect-and-digest@collect-and-digest
 codex
 ```
 
@@ -86,21 +78,18 @@ repository設定としてインストールする場合は`project`を指定す�
 CLAUDE_PLUGIN_SCOPE=project
 
 claude plugin marketplace add nakamori-naoya/collect-and-digest-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install meeting-collect@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install session-collect@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install slack-collect@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install digest@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install session-digest@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install collect-and-digest@collect-and-digest --scope "$CLAUDE_PLUGIN_SCOPE"
 ```
+
+利用者がインストールするのはこのpackageだけである。`meeting-collect`、`session-collect`、`slack-collect`、`digest`、`session-digest`は選択できる内包機能であり、個別のインストール対象ではない。
 
 ## インストール済みである必要があるplugin
 
 このrepository外の依存だけを記載する。
 
 - `write-doc@write-doc`
-- `writing-rules@write-doc`
 
-playbookの依存は`plugin@marketplace`のidentityだけを宣言し、versionは固定しない。開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
+別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
 
 ## 設定の上書きと優先順位
 

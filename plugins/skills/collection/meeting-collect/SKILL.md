@@ -13,7 +13,12 @@ description: Notion / Google Docs の議事録のうち、設定timezone上の�
 
 <!-- BEGIN shared:skill-entry/root-block -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/skills/collection/meeting-collect" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/skills/collection/meeting-collect"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 ```
 
 `PLUGIN_ROOT`は配布物rootの絶対パスである。単一skill pluginではこの`SKILL.md`があるdirectory、複数skill pluginでは`skills/<skill>/`の2つ上に当たる。Claude Codeでは`${CLAUDE_PLUGIN_ROOT}`が自動展開される。

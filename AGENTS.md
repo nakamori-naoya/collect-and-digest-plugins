@@ -1,3 +1,3 @@
 # AGENTS.md
 
-このrepositoryは収集とdigestのmarketplaceである。会議、Slack、agent sessionの収集と、その収集物からのdigestだけを配布する。資料化の外部依存はmarketplace名とplugin名で解決し、versionを固定せず、解決先に必要なskillが存在することを検査する。変更後は`bash scripts/validate.sh`を実行する。
+このrepositoryは収集とdigestのmarketplaceである。marketplaceへ公開するインストール対象は`collect-and-digest` playbook packageだけにし、会議、Slack、agent sessionの収集とdigestはその内側へ同梱する。別repositoryには、そのrepositoryが公開するplaybook packageだけで依存し、内部skill名へ依存しない。versionを固定せず、解決先に必要なskillが存在することを検査する。変更後は`bash scripts/validate.sh`を実行する。
