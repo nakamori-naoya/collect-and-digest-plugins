@@ -57,6 +57,8 @@ def resolved_descendant(root: Path, raw: str, plugin: str, source_kind: str) -> 
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="path-escape")
     if candidate != lexical:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="path-symlink")
+    if not os.path.isdir(candidate):
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="root-not-directory")
     return Path(candidate)
 
 
@@ -136,7 +138,7 @@ def validate_candidate(
         ):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
         entry_root = resolved_descendant(canonical, entry_relative, plugin, source_kind)
-        if not entry_root.is_dir() or not contained(canonical, entry_root):
+        if not contained(canonical, entry_root):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
     return {
         "plugin": plugin,
@@ -243,11 +245,24 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, st
         cache = Path(os.environ.get("CODEX_PLUGIN_CACHE", Path.home() / ".codex/plugins/cache"))
     else:
         cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
-    marketplace_component = identifier_component(marketplace, "marketplace")
-    plugin_component = identifier_component(plugin, "plugin")
-    marketplace_cache = cache / marketplace_component
-    plugin_cache = marketplace_cache / plugin_component
-    if plugin_cache.is_dir():
+    marketplace_component = os.path.basename(marketplace)
+    plugin_component = os.path.basename(plugin)
+    if marketplace_component != marketplace or not IDENTIFIER.fullmatch(marketplace_component):
+        fail("dependency-invalid", marketplace=marketplace, reason="identity")
+    if plugin_component != plugin or not IDENTIFIER.fullmatch(plugin_component):
+        fail("dependency-invalid", plugin=plugin, reason="identity")
+    cache_boundary = os.path.realpath(os.fspath(cache))
+    allowed_roots = tuple(
+        os.path.realpath(path)
+        for path in (os.path.expanduser("~"), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+    )
+    if not any(cache_boundary == root or cache_boundary.startswith(root + os.sep) for root in allowed_roots):
+        fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="cache-root-outside-allowed-roots")
+    plugin_cache = os.path.realpath(os.path.join(cache_boundary, marketplace_component, plugin_component))
+    if not plugin_cache.startswith(cache_boundary + os.sep):
+        fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="path-escape")
+    if os.path.isdir(plugin_cache):
+        plugin_cache = Path(plugin_cache)
         candidates = [
             (key, child)
             for child in plugin_cache.iterdir()
@@ -278,7 +293,10 @@ def main() -> int:
     args = parser.parse_args()
     plugin = identifier_component(args.plugin, "plugin")
     marketplace = identifier_component(args.marketplace, "marketplace")
-    plugin_root = Path(args.plugin_root).resolve(strict=True)
+    script_directory = Path(__file__).resolve().parent
+    plugin_root = script_directory.parent if script_directory.name == "scripts" else script_directory
+    if args.plugin_root != os.fspath(plugin_root):
+        fail("dependency-invalid", plugin=plugin, marketplace=marketplace, reason="plugin-root-mismatch")
     runtime = runtime_for(plugin_root)
     identity = f"{marketplace}/{plugin}"
     candidate = dev_candidate(identity, runtime, plugin)
