@@ -40,6 +40,26 @@ def contained(root: Path, candidate: Path) -> bool:
         return False
 
 
+def identifier_component(value: str, label: str) -> str:
+    """Return an identifier that is safe to use as one path component."""
+    component = os.path.basename(value)
+    if component != value or not IDENTIFIER.fullmatch(component):
+        fail("dependency-invalid", **{label: value}, reason="identity")
+    return component
+
+
+def resolved_descendant(root: Path, raw: str, plugin: str, source_kind: str) -> Path:
+    """Resolve a manifest-declared path and keep it below its package root."""
+    boundary = os.path.realpath(os.fspath(root))
+    lexical = os.path.abspath(os.path.join(boundary, raw))
+    candidate = os.path.realpath(lexical)
+    if not candidate.startswith(boundary + os.sep):
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="path-escape")
+    if candidate != lexical:
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="path-symlink")
+    return Path(candidate)
+
+
 def runtime_for(plugin_root: Path) -> str:
     explicit = os.environ.get("HARNESS_PLUGIN_RUNTIME", "")
     if explicit:
@@ -115,10 +135,7 @@ def validate_candidate(
             or ".." in Path(entry_relative).parts
         ):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
-        try:
-            entry_root = (canonical / entry_relative).resolve(strict=True)
-        except OSError as exc:
-            fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason=str(exc))
+        entry_root = resolved_descendant(canonical, entry_relative, plugin, source_kind)
         if not entry_root.is_dir() or not contained(canonical, entry_root):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
     return {
@@ -164,7 +181,8 @@ def repository_candidate(plugin_root: Path, marketplace: str, runtime: str, plug
                 )
                 relative = internal.get(plugin) if isinstance(internal, dict) else None
                 if isinstance(relative, str):
-                    return validate_candidate(ancestor / relative, runtime, plugin, "repository", ancestor)
+                    candidate = resolved_descendant(ancestor, relative, plugin, "repository")
+                    return validate_candidate(candidate, runtime, plugin, "repository", ancestor)
         manifest = ancestor / rel_market
         if not manifest.is_file():
             continue
@@ -197,7 +215,8 @@ def repository_candidate(plugin_root: Path, marketplace: str, runtime: str, plug
             relative = internal.get(plugin) if isinstance(internal, dict) else None
             if not isinstance(relative, str):
                 fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="marketplace-entry")
-        return validate_candidate(ancestor / relative, runtime, plugin, "repository", ancestor)
+        candidate = resolved_descendant(ancestor, relative, plugin, "repository")
+        return validate_candidate(candidate, runtime, plugin, "repository", ancestor)
     return None
 
 
@@ -224,8 +243,10 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, st
         cache = Path(os.environ.get("CODEX_PLUGIN_CACHE", Path.home() / ".codex/plugins/cache"))
     else:
         cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
-    marketplace_cache = cache / marketplace
-    plugin_cache = marketplace_cache / plugin
+    marketplace_component = identifier_component(marketplace, "marketplace")
+    plugin_component = identifier_component(plugin, "plugin")
+    marketplace_cache = cache / marketplace_component
+    plugin_cache = marketplace_cache / plugin_component
     if plugin_cache.is_dir():
         candidates = [
             (key, child)
@@ -255,25 +276,25 @@ def main() -> int:
     parser.add_argument("--plugin", required=True)
     parser.add_argument("--marketplace", required=True)
     args = parser.parse_args()
-    if not IDENTIFIER.fullmatch(args.plugin) or not IDENTIFIER.fullmatch(args.marketplace):
-        fail("dependency-invalid", plugin=args.plugin, marketplace=args.marketplace, reason="identity")
+    plugin = identifier_component(args.plugin, "plugin")
+    marketplace = identifier_component(args.marketplace, "marketplace")
     plugin_root = Path(args.plugin_root).resolve(strict=True)
     runtime = runtime_for(plugin_root)
-    identity = f"{args.marketplace}/{args.plugin}"
-    candidate = dev_candidate(identity, runtime, args.plugin)
+    identity = f"{marketplace}/{plugin}"
+    candidate = dev_candidate(identity, runtime, plugin)
     if candidate is None:
-        candidate = repository_candidate(plugin_root, args.marketplace, runtime, args.plugin)
+        candidate = repository_candidate(plugin_root, marketplace, runtime, plugin)
     if candidate is None:
-        candidate = cache_candidate(args.marketplace, runtime, args.plugin)
+        candidate = cache_candidate(marketplace, runtime, plugin)
     if candidate is None:
         fail(
             "dependency-missing",
-            plugin=args.plugin,
-            marketplace=args.marketplace,
+            plugin=plugin,
+            marketplace=marketplace,
             runtime=runtime,
-            install=f"{args.plugin}@{args.marketplace}",
+            install=f"{plugin}@{marketplace}",
         )
-    candidate["marketplace"] = args.marketplace
+    candidate["marketplace"] = marketplace
     print(json.dumps(candidate, ensure_ascii=False, separators=(",", ":")))
     return 0
 
