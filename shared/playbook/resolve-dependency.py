@@ -161,10 +161,23 @@ def validate_candidate(
 
 
 
+def canonical_input_root(root: Path, label: str = "path-root") -> Path:
+    """Validate persisted root identity without rebasing through new symlinks."""
+    if not root.is_absolute() or any(path.is_symlink() for path in [root, *root.parents]):
+        fail("dependency-invalid", reason=label + "-symlink")
+    try:
+        canonical = root.resolve(strict=True)
+    except OSError as exc:
+        fail("dependency-invalid", reason=label + "-unavailable", detail=str(exc))
+    if canonical != root or not canonical.is_dir():
+        fail("dependency-invalid", reason=label + "-noncanonical")
+    return canonical
+
+
 def safe_path(root: Path, raw: str, exists: bool = True) -> Path:
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or ".." in Path(raw).parts or "\\" in raw:
         fail("dependency-invalid", reason="path-format", path=str(raw))
-    boundary = root.resolve(strict=True)
+    boundary = canonical_input_root(root)
     lexical = Path(os.path.abspath(boundary / raw))
     if not contained(boundary, lexical):
         fail("dependency-invalid", reason="path-escape", path=raw)
@@ -190,6 +203,7 @@ def skill_name(path: Path) -> str:
 
 
 def public_skills(root: Path, data: dict) -> dict[str, str]:
+    root = canonical_input_root(root)
     declared = data.get("skills")
     if declared is None:
         paths = [root / "SKILL.md"] if (root / "SKILL.md").is_file() else list((root / "skills").glob("*/SKILL.md"))
@@ -216,6 +230,7 @@ def public_skills(root: Path, data: dict) -> dict[str, str]:
 
 
 def content_hash(root: Path) -> str:
+    root = canonical_input_root(root)
     digest = hashlib.sha256()
     for directory, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in {".git", "__pycache__", ".harness-plugin-test-cache"})
@@ -238,16 +253,10 @@ def check_steps(config: dict, selected: str | None = None) -> None:
     available = {}
     for dep in deps.values():
         root = Path(dep.get("package_root", dep["root"]))
-        # Resolved config stores a canonical root. Never rebase it through a
-        # symlink introduced after resolution, including an ancestor directory.
-        if not root.is_absolute() or any(path.is_symlink() for path in [root, *root.parents]):
-            fail("dependency-invalid", reason="package-root-symlink")
-        try:
-            canonical_root = root.resolve(strict=True)
-        except OSError as exc:
-            fail("dependency-invalid", reason="package-root-unavailable", detail=str(exc))
-        if canonical_root != root or not canonical_root.is_dir():
-            fail("dependency-invalid", reason="package-root-noncanonical")
+        root = canonical_input_root(root, "package-root")
+        entry_root = canonical_input_root(Path(dep["root"]), "entry-root")
+        if not contained(root, entry_root):
+            fail("dependency-invalid", reason="entry-root-escape")
         # Inspect the lexical path before reading; hashing afterwards is too late.
         try:
             relative_manifest = Path(dep["manifest"]).relative_to(root)
