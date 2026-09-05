@@ -237,39 +237,35 @@ def semver_key(value: str) -> tuple[int, int, int, int, tuple[tuple[int, int | s
     return major, minor, patch, 0, tuple(identifiers)
 
 
-def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, str] | None:
+def selected_cache_root(runtime: str, plugin_root: Path, plugin: str) -> Path:
     override = os.environ.get("HARNESS_PLUGIN_CACHE_ROOT", "")
     if override:
-        cache = Path(override)
-    elif runtime == "codex":
-        cache = Path(os.environ.get("CODEX_PLUGIN_CACHE", Path.home() / ".codex/plugins/cache"))
-    else:
-        cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
-    marketplace_component = os.path.basename(marketplace)
-    plugin_component = os.path.basename(plugin)
-    if "/" in marketplace or "\\" in marketplace or ".." in marketplace:
-        fail("dependency-invalid", marketplace=marketplace, reason="identity")
-    if "/" in plugin or "\\" in plugin or ".." in plugin:
-        fail("dependency-invalid", plugin=plugin, reason="identity")
-    if marketplace_component != marketplace or not IDENTIFIER.fullmatch(marketplace_component):
-        fail("dependency-invalid", marketplace=marketplace, reason="identity")
-    if plugin_component != plugin or not IDENTIFIER.fullmatch(plugin_component):
-        fail("dependency-invalid", plugin=plugin, reason="identity")
-    cache_boundary = os.path.realpath(os.fspath(cache))
-    if not (
-        cache_boundary.startswith("/Users/")
-        or cache_boundary.startswith("/home/")
-        or cache_boundary.startswith("/tmp/")
-        or cache_boundary.startswith("/private/tmp/")
-        or cache_boundary.startswith("/var/folders/")
-        or cache_boundary.startswith("/private/var/folders/")
-    ):
-        fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="cache-root-outside-allowed-roots")
-    plugin_cache = os.path.realpath(os.path.join(cache_boundary, marketplace_component, plugin_component))
-    if not plugin_cache.startswith(cache_boundary + os.sep):
-        fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="path-escape")
-    if os.path.isdir(plugin_cache):
-        plugin_cache = Path(plugin_cache)
+        test_cache = plugin_root / ".harness-plugin-test-cache"
+        if os.path.realpath(override) != os.path.realpath(test_cache):
+            fail("dependency-invalid", plugin=plugin, source_kind="installed-cache", reason="test-cache-root-mismatch")
+        return test_cache
+    for ancestor in (plugin_root, *plugin_root.parents):
+        if ancestor.name == "cache" and ancestor.parent.name == "plugins" and ancestor.is_dir():
+            return ancestor
+    fail("dependency-invalid", plugin=plugin, runtime=runtime, source_kind="installed-cache", reason="cache-root-unresolved")
+
+
+def named_directory(parent: Path, expected: str) -> Path | None:
+    if not parent.is_dir() or parent.is_symlink():
+        return None
+    matches = [child for child in parent.iterdir() if child.name == expected and child.is_dir() and not child.is_symlink()]
+    if len(matches) > 1:
+        fail("dependency-invalid", source_kind="installed-cache", reason="duplicate-cache-directory")
+    return matches[0] if matches else None
+
+
+def cache_candidate(marketplace: str, runtime: str, plugin: str, plugin_root: Path) -> dict[str, str] | None:
+    cache = selected_cache_root(runtime, plugin_root, plugin)
+    marketplace_cache = named_directory(cache, marketplace)
+    if marketplace_cache is None:
+        return None
+    plugin_cache = named_directory(marketplace_cache, plugin)
+    if plugin_cache is not None:
         candidates = [
             (key, child)
             for child in plugin_cache.iterdir()
@@ -310,7 +306,7 @@ def main() -> int:
     if candidate is None:
         candidate = repository_candidate(plugin_root, marketplace, runtime, plugin)
     if candidate is None:
-        candidate = cache_candidate(marketplace, runtime, plugin)
+        candidate = cache_candidate(marketplace, runtime, plugin, plugin_root)
     if candidate is None:
         fail(
             "dependency-missing",
