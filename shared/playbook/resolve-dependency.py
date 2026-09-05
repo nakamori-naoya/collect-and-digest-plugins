@@ -107,7 +107,7 @@ def validate_candidate(
         boundary = containment.resolve(strict=True)
         if not contained(boundary, canonical):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="path-escape")
-    manifest = manifest_path(canonical, runtime)
+    manifest = safe_path(canonical, str(manifest_path(canonical, runtime).relative_to(canonical)))
     if not manifest.is_file() or manifest.is_symlink():
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-missing")
     data = load_json(manifest, "dependency-invalid")
@@ -238,7 +238,25 @@ def check_steps(config: dict, selected: str | None = None) -> None:
     available = {}
     for dep in deps.values():
         root = Path(dep.get("package_root", dep["root"]))
-        manifest = load_json(Path(dep["manifest"]), "dependency-invalid")
+        # Resolved config stores a canonical root. Never rebase it through a
+        # symlink introduced after resolution, including an ancestor directory.
+        if not root.is_absolute() or any(path.is_symlink() for path in [root, *root.parents]):
+            fail("dependency-invalid", reason="package-root-symlink")
+        try:
+            canonical_root = root.resolve(strict=True)
+        except OSError as exc:
+            fail("dependency-invalid", reason="package-root-unavailable", detail=str(exc))
+        if canonical_root != root or not canonical_root.is_dir():
+            fail("dependency-invalid", reason="package-root-noncanonical")
+        # Inspect the lexical path before reading; hashing afterwards is too late.
+        try:
+            relative_manifest = Path(dep["manifest"]).relative_to(root)
+        except ValueError:
+            fail("dependency-invalid", reason="manifest-path-escape")
+        checked_manifest = safe_path(root, str(relative_manifest))
+        if not checked_manifest.is_file():
+            fail("dependency-invalid", reason="manifest-not-file")
+        manifest = load_json(checked_manifest, "dependency-invalid")
         if dep.get("content_hash") != content_hash(root):
             fail("dependency-changed", reason="content-hash", plugin=dep.get("plugin", "unknown"))
         contract = manifest.get("metadata", {}).get("harness", {}).get("contractVersion", 1)
