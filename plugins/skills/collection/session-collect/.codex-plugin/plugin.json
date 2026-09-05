@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Session Collect",
     "shortDescription": "Claude Code / Codex のローカルセッションを、原文を複製せず日付別の索引として収集する。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "session-collectを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

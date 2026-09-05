@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -113,7 +114,7 @@ def validate_candidate(
     if not isinstance(data, dict) or data.get("name") != plugin:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-identity-mismatch")
     version = data.get("version")
-    if not isinstance(version, str) or not SEMVER.fullmatch(version):
+    if not isinstance(version, str) or semver_key(version) is None:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-version-invalid")
     if expected_directory_version is not None and version != expected_directory_version:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="cache-version-mismatch")
@@ -140,7 +141,15 @@ def validate_candidate(
         entry_root = resolved_descendant(canonical, entry_relative, plugin, source_kind)
         if not contained(canonical, entry_root):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
+    contract = harness.get("contractVersion", 1)
+    if type(contract) is not int or contract not in {1}:
+        fail("dependency-incompatible", reason="contract-version", version=str(contract))
+    skills = public_skills(canonical, data)
     return {
+        "contract_version": contract,
+        "content_hash": content_hash(canonical),
+        "skills": skills,
+        "prerelease_policy": "explicit-opt-in",
         "plugin": plugin,
         "version": version,
         "runtime": runtime,
@@ -150,6 +159,125 @@ def validate_candidate(
         "manifest": str(manifest),
     }
 
+
+
+def safe_path(root: Path, raw: str, exists: bool = True) -> Path:
+    if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or ".." in Path(raw).parts or "\\" in raw:
+        fail("dependency-invalid", reason="path-format", path=str(raw))
+    boundary = root.resolve(strict=True)
+    lexical = Path(os.path.abspath(boundary / raw))
+    if not contained(boundary, lexical):
+        fail("dependency-invalid", reason="path-escape", path=raw)
+    current = boundary
+    for part in lexical.relative_to(boundary).parts:
+        current /= part
+        if current.is_symlink():
+            fail("dependency-invalid", reason="path-symlink", path=raw)
+    if exists and not lexical.exists():
+        fail("dependency-invalid", reason="path-missing", path=raw)
+    return lexical
+
+
+def skill_name(path: Path) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != "---" or "---" not in lines[1:]:
+        fail("dependency-invalid", reason="skill-frontmatter", path=str(path))
+    header = lines[1:lines[1:].index("---") + 1]
+    names = [line[6:].strip().strip("\"'") for line in header if line.startswith("name: ")]
+    if len(names) != 1 or not IDENTIFIER.fullmatch(names[0]):
+        fail("dependency-invalid", reason="skill-name", path=str(path))
+    return names[0]
+
+
+def public_skills(root: Path, data: dict) -> dict[str, str]:
+    declared = data.get("skills")
+    if declared is None:
+        paths = [root / "SKILL.md"] if (root / "SKILL.md").is_file() else list((root / "skills").glob("*/SKILL.md"))
+    else:
+        if isinstance(declared, str):
+            declared = [declared]
+        if not isinstance(declared, list) or not declared:
+            fail("dependency-invalid", reason="skills-schema")
+        paths = []
+        for raw in declared:
+            member = safe_path(root, raw)
+            candidates = [member / "SKILL.md"] if (member / "SKILL.md").exists() else list(member.glob("*/SKILL.md"))
+            if not candidates:
+                fail("dependency-invalid", reason="skill-entry-missing", path=str(member))
+            paths.extend(candidates)
+    result = {}
+    for path in paths:
+        path = safe_path(root, str(path.relative_to(root)))
+        name = skill_name(path)
+        if name in result:
+            fail("dependency-invalid", reason="duplicate-skill", skill=name)
+        result[name] = str(path)
+    return result
+
+
+def content_hash(root: Path) -> str:
+    digest = hashlib.sha256()
+    for directory, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in {".git", "__pycache__", ".harness-plugin-test-cache"})
+        for name in sorted(dirs + files):
+            path = Path(directory) / name
+            if path.is_symlink():
+                fail("dependency-invalid", reason="path-symlink", path=str(path))
+        for name in sorted(files):
+            path = Path(directory) / name
+            if path.suffix == ".pyc":
+                continue
+            digest.update(str(path.relative_to(root)).encode() + b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def check_steps(config: dict, selected: str | None = None) -> None:
+    deps = config["deps"]
+    available = {}
+    for dep in deps.values():
+        root = Path(dep.get("package_root", dep["root"]))
+        manifest = load_json(Path(dep["manifest"]), "dependency-invalid")
+        if dep.get("content_hash") != content_hash(root):
+            fail("dependency-changed", reason="content-hash", plugin=dep.get("plugin", "unknown"))
+        contract = manifest.get("metadata", {}).get("harness", {}).get("contractVersion", 1)
+        if type(contract) is not int or contract not in {1} or contract != dep.get("contract_version"):
+            fail("dependency-incompatible", reason="contract-version")
+        for name, path in public_skills(root, manifest).items():
+            if name in available and available[name] != path:
+                fail("dependency-invalid", reason="duplicate-skill", skill=name)
+            available[name] = path
+    matched = selected is None
+    for step in config["playbook"]["steps"]:
+        if selected == step["id"]:
+            matched = True
+        active = selected == step["id"] if selected else step.get("when") is None
+        if "skill" in step:
+            identifier_component(step["skill"], "skill")
+            if active and step["skill"] not in available:
+                print("[error] steps が指すスキルが requires のプラグインに無い: " + step["skill"], file=sys.stderr)
+                raise SystemExit(2)
+        if "script" in step:
+            owner = step.get("plugin")
+            if owner:
+                identifier_component(owner, "plugin")
+            base = Path(deps[owner]["root"]) if owner in deps else Path(config["playbook_root"])
+            if owner and owner not in deps and active:
+                fail("dependency-invalid", reason="script-owner-missing", plugin=owner)
+            path = safe_path(base, step["script"], exists=active)
+            if active and not path.is_file():
+                fail("dependency-invalid", reason="script-not-file", path=str(path))
+        if "playbook" in step:
+            name = identifier_component(step["playbook"], "playbook")
+            if active:
+                if name not in deps:
+                    fail("dependency-invalid", reason="playbook-owner-missing", plugin=name)
+                base = Path(deps[name]["root"])
+                safe_path(base, "playbook.yml")
+                safe_path(base, "scripts/resolve.sh")
+    if not matched:
+        fail("dependency-invalid", reason="unknown-step", step=str(selected))
 
 def dev_candidate(identity: str, runtime: str, plugin: str) -> dict[str, str] | None:
     raw = os.environ.get("HARNESS_PLUGIN_DEV_ROOTS", "")
@@ -233,6 +361,8 @@ def semver_key(value: str) -> tuple[int, int, int, int, tuple[tuple[int, int | s
         return major, minor, patch, 1, ()
     identifiers: list[tuple[int, int | str]] = []
     for part in prerelease.split("."):
+        if part.isdigit() and len(part) > 1 and part.startswith("0"):
+            return None
         identifiers.append((0, int(part)) if part.isdigit() else (1, part))
     return major, minor, patch, 0, tuple(identifiers)
 
@@ -269,7 +399,8 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str, plugin_root: Pa
         candidates = [
             (key, child)
             for child in plugin_cache.iterdir()
-            if child.is_dir() and (key := semver_key(child.name)) is not None
+            if child.is_dir() and not child.is_symlink() and (key := semver_key(child.name)) is not None
+            and (key[3] == 1 or os.environ.get("HARNESS_PLUGIN_ALLOW_PRERELEASE") == "1")
         ]
         if candidates:
             _, candidate = max(candidates, key=lambda item: (item[0], item[1].name))
@@ -289,6 +420,10 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str, plugin_root: Pa
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-steps":
+        config = json.load(sys.stdin)
+        check_steps(config, sys.argv[2] if len(sys.argv) == 3 else None)
+        return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("--plugin-root", required=True)
     parser.add_argument("--plugin", required=True)
