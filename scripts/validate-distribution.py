@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -55,16 +54,19 @@ def safe_member(root: Path, raw: object, label: str) -> Path:
     relative = Path(raw)
     if relative.is_absolute() or ".." in relative.parts or raw.endswith("/"):
         fail(f"{label}に不正なpathがあります: {raw}")
-    declared = root / relative
-    try:
-        resolved = declared.resolve(strict=True)
-    except OSError as exc:
-        fail(f"{label}が実在しません: {raw}: {exc}")
-    if resolved == root or root not in resolved.parents:
+    boundary = os.path.realpath(os.fspath(root))
+    lexical = os.path.abspath(os.path.join(boundary, raw))
+    candidate = os.path.realpath(lexical)
+    if not candidate.startswith(boundary + os.sep):
         fail(f"{label}が配布package外を指しています: {raw}")
+    if candidate != lexical:
+        fail(f"{label}がsymlinkです: {raw}")
+    declared = Path(candidate)
+    if not declared.exists():
+        fail(f"{label}が実在しません: {raw}")
     if declared.is_symlink():
         fail(f"{label}がsymlinkです: {raw}")
-    return resolved
+    return declared
 
 
 def catalog_entry(path: Path, runtime: str) -> tuple[str, dict]:
@@ -216,14 +218,13 @@ def expect_rejected(root: Path, name: str, expected: str, mutate) -> None:
         fixture = Path(temporary) / "repository"
         shutil.copytree(root, fixture, ignore=shutil.ignore_patterns(".git"), symlinks=True)
         mutate(fixture)
-        result = subprocess.run(
-            [sys.executable, os.fspath(fixture / "scripts/validate-distribution.py"), os.fspath(fixture)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 or expected not in result.stderr:
-            fail(f"負例を期待した理由で拒否できません: {name}: {result.stderr.strip()}")
+        try:
+            validate_repository(fixture)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            if expected not in str(exc):
+                fail(f"負例を期待した理由で拒否できません: {name}: {exc}")
+        else:
+            fail(f"負例を拒否できません: {name}")
 
 
 def self_test(root: Path) -> int:
@@ -289,6 +290,26 @@ def self_test(root: Path) -> int:
             remove_first_internal,
         ),
         (
+            "internal-path-escape",
+            "不正なpath",
+            lambda f: [
+                (lambda p, d: (d["metadata"]["harness"]["internalPlugins"].update({first_mapping(f, "internalPlugins")[0]: "./../LICENSE"}), write_json(p, d)))(
+                    package_manifest(f, r), load_json(package_manifest(f, r))
+                )
+                for r in ("claude", "codex")
+            ],
+        ),
+        (
+            "skill-path-escape",
+            "不正なpath",
+            lambda f: [
+                (lambda p, d: (d["skills"].__setitem__(0, "./../LICENSE"), write_json(p, d)))(
+                    package_manifest(f, r), load_json(package_manifest(f, r))
+                )
+                for r in ("claude", "codex")
+            ],
+        ),
+        (
             "playbook-missing",
             "playbook",
             lambda f: (f / "plugins" / first_mapping(f, "playbooks")[1] / "playbook.yml").unlink(),
@@ -319,11 +340,12 @@ def self_test(root: Path) -> int:
 
 
 def main() -> int:
-    if len(sys.argv) == 2:
-        return validate_repository(Path(sys.argv[1]).resolve(strict=True))
-    if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
-        return self_test(Path(sys.argv[2]).resolve(strict=True))
-    print(f"usage: {Path(sys.argv[0]).name} [--self-test] REPOSITORY_ROOT", file=sys.stderr)
+    root = Path(__file__).resolve().parent.parent
+    if len(sys.argv) == 2 and sys.argv[1] == os.fspath(root):
+        return validate_repository(root)
+    if len(sys.argv) == 3 and sys.argv[1] == "--self-test" and sys.argv[2] == os.fspath(root):
+        return self_test(root)
+    print(f"usage: {Path(sys.argv[0]).name} [--self-test] {root}", file=sys.stderr)
     return 2
 
 
