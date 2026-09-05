@@ -20,7 +20,7 @@ python3 "${PLUGIN_ROOT}/scripts/message.py" append --config "$CFG_FILE" \
   --omitted "files,reactions"
 ```
 
-`ts`で重複を除き、時系列に並べる。同じ日に何度実行しても差分だけが増える。
+`ts`で統合して時系列に並べる。同tsの編集は旧レコードを`versions`へ保持する。明示的な削除通知は`{"ts":"...","permalink":"...","deleted":true}`として渡し、保存済み本文を保持したtombstoneにする。入力に無いだけのレコードは保持する。各実行で指定対象日の全範囲（スレッドは取得可能な全返信）を再取得する。指定外の過去日は更新しない。APIが返さない編集・削除は反映できず、現行snapshotの保証はしない。保存directoryの排他とredo journalで本文・台帳を同期し、中断後は次のcheck/append時に回復する。
 
 ## 既知の認証情報フォーマットの自動redaction
 

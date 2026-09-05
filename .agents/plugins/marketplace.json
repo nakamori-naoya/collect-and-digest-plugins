@@ -1,3 +1,21 @@
-{"name":"collect-and-digest","interface":{"displayName":"Collect and Digest"},"plugins":[
-  {"name":"collect-and-digest","source":{"source":"local","path":"./plugins"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Productivity","version":"1.0.0"}
-]}
+{
+  "name": "collect-and-digest",
+  "interface": {
+    "displayName": "Collect and Digest"
+  },
+  "plugins": [
+    {
+      "name": "collect-and-digest",
+      "source": {
+        "source": "local",
+        "path": "./plugins"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity",
+      "version": "2.0.0"
+    }
+  ]
+}

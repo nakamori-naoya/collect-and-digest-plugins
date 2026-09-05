@@ -118,3 +118,17 @@ bash scripts/validate.sh
 ## 業務知識
 
 - [収集とダイジェスト作成の業務知識と振る舞い](docs/2026-09-02-収集とダイジェスト作成-業務知識と振る舞い.md)
+
+## 実行契約の検証と配布
+
+`python3 scripts/doctor.py --repository . --repo <対象repository>` はCLI構文、公開skillと設定・依存の解決を読み取り専用で診断する。設定解決を含めない検査は `--distribution-only` を明示する。
+
+`bash scripts/validate.sh` は機能・不正入力・配布の検証を行い、GitHub Actionsの `validate (ubuntu-latest)` / `validate (macos-latest)` でも実行する。[意味的評価シナリオ](evals/scenarios.json)は `scripts/evaluate-skills.py` で実モデルと別のjudgeモデルへ渡し、モデルID・設定・入力・応答・判定根拠を記録する。モデル評価は構造検証と別に実施し、未実行を成功として扱わない。
+
+version更新は `python3 scripts/release.py --plugin <公開plugin名> --version <semver> --notes <変更内容> --breaking <互換性への影響> --migration <移行方法> --checks <codex/claudeの検証結果JSON>` で計画を確認し、`--apply` で両runtimeのmanifestとmarketplaceを更新する。検証結果には未検証も明示できる。配布・外部publishは別操作であり、このcommandでは行わない。
+
+### 破壊的変更と移行
+
+公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
+
+収集は追記archiveであり、現行snapshotとの完全同期を保証しない。Slack編集は旧本文をversionsへ保持し、明示削除はtombstoneにする。取得結果に無いだけで保存物を削除しない。会議の日付変更・transcript省略でも旧fileを履歴として保持し、最新台帳pathと現行partsを参照する。保存directory全体を排他し、中断された本文・台帳の更新は次回check/write/appendでjournalから回復する。台帳の構文またはschema破損は自動スキップせず停止するため、旧データは退避して内容を確認してから移行する。

@@ -12,5 +12,10 @@
     "mentions",
     "channels"
   ],
-  "skills": "./skills"
+  "skills": "./",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
 }

@@ -27,7 +27,6 @@ fi
 <!-- BEGIN shared:skill-entry/config-load -->
 ```bash
 CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE"' EXIT
 ```
 
 **このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
@@ -57,3 +56,5 @@ enabledなrootの欠落、中間の真にparse不能なJSONL、上限超過、�
 セッションファイルが対象schema外（sessionId自体を持たないWorkflow journal.jsonl形式など）や、sessionIdはあるが有効なturn/timestampをまだ持たない空セッションは、停止条件ではない。1ファイルだけ理由付きでスキップし、走査は継続する（`counts.unrecognized`、私的な`artifact.skipped_log`）。
 
 詳しい形式・privacy・更新規則は[セッション形式と収集契約](references/workflow.md)に従う。
+
+設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。

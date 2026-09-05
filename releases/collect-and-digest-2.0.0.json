@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "plugin": "collect-and-digest",
+  "version": "2.0.0",
+  "created_at": "2026-09-05T12:01:28.709996+00:00",
+  "notes": "収集の排他・中断回復・メタデータ更新・YAML型維持・編集履歴を修正。",
+  "breaking": "台帳のschema不正を拒否。Slack指定対象日は毎回再取得し、編集履歴と明示削除tombstoneを保持。",
+  "migration": "既存保存物をバックアップして台帳schemaを確認する。欠落だけで削除せず、指定外日は自動更新しない。新しい公開入口とrun pathを使う。",
+  "checks": {
+    "codex": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed",
+      "evidence": "bash scripts/validate.sh; both runtime marketplace and public entry fixtures"
+    },
+    "claude": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed",
+      "semantic-evaluation": "Fable 5.1 generation + Fable 5 independent judge; representative next-response fixtures passed; tools disabled"
+    },
+    "review": {
+      "independent": "completed",
+      "baseline": "regression reproductions recorded",
+      "post-version-validation": "required before commit"
+    }
+  },
+  "files": [
+    "plugins/.claude-plugin/plugin.json",
+    "plugins/.codex-plugin/plugin.json",
+    ".agents/plugins/marketplace.json",
+    ".claude-plugin/marketplace.json"
+  ]
+}

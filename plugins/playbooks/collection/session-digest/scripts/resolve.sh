@@ -136,79 +136,13 @@ while IFS=$'\t' read -r dep market; do
   deps=$(jq -c --arg k "$dep" --argjson v "$candidate" '.[$k]=$v' <<<"$deps") || exit 2
 done < <(jq -r '.requires[] | [.plugin,.marketplace] | @tsv' <<<"$pb")
 
-# requires はプラグイン名、steps[].skill はスキル名で、名前空間が違う。
-# **両方を検査しないと片方だけが素通りする。** requires を通っても、steps が
-# 存在しないスキルを指していれば、実行するエージェントはそれを呼べず自力で始める。
-# 「規律なしで資料が出る」は、資料が出ないことより悪い。ここで止める。
-available=""
-while IFS=$'\t' read -r dep_root package_root manifest_path; do
-  # 単一skill pluginはrootのSKILL.md、複数skill pluginだけは
-  # skills/<name>/SKILL.mdを持つ。どちらも深さが決まっているので、
-  # **単体配布先で広域をfindしない。**
-  for sk in "$dep_root"/SKILL.md "$dep_root"/skills/*/SKILL.md; do
-    [ -f "$sk" ] || continue
-    sk_name=$(sed -n 's/^name: //p' "$sk" | head -1)
-    [ -z "$sk_name" ] || available="$available $sk_name"
-  done
-  # playbook packageは複数の内部skillをmanifestで明示する。呼び出し側は
-  # 内部plugin名へ依存せず、公開packageの宣言済みskillだけを利用する。
-  if [ -f "$manifest_path" ]; then
-    while IFS= read -r declared; do
-      [ -n "$declared" ] || continue
-      skill_root="$package_root/${declared#./}"
-      skill_file="$skill_root/SKILL.md"
-      [ -f "$skill_file" ] || continue
-      sk_name=$(sed -n 's/^name: //p' "$skill_file" | head -1)
-      [ -z "$sk_name" ] || available="$available $sk_name"
-    done < <(jq -r '.skills | if type=="array" then .[] elif type=="string" then . else empty end' "$manifest_path")
-  fi
-done < <(jq -r '.[] | [.root, (.package_root // .root), .manifest] | @tsv' <<<"$deps")
-# when: を持つ工程は、条件が偽なら実行されない。そのとき依存を宣言しないのは正しい。
-# だから**無条件の工程だけ**を、実体があることまで確かめる対象にする。
-unresolved=""
-for want in $(jq -r '.steps[]? | select(.when == null) | select(.skill != null) | .skill' <<<"$pb"); do
-  case " $available " in *" $want "*) ;; *) unresolved="${unresolved} ${want}" ;; esac
-done
-if [ -n "$unresolved" ]; then
-  echo "[error] steps が指すスキルが requires のプラグインに無い:${unresolved}" >&2
-  echo "        呼べないスキルを指したまま走ると、その工程だけ規律なしで進む。" >&2
-  echo "        指せるスキル:${available:- （requires のプラグインにスキルが無い）}" >&2
-  exit 2
-fi
-
-# script も同じ。指した先が無ければ、その工程は実行されずに飛ばされる。
-# plugin: を伴うときは、その依存プラグインの配下を見る（自分の配下ではない）。
-# path は配布物の中に限る。外を指せると、配られた段取りが任意の場所を実行できる。
-# 区切りは空白以外にする。tab は IFS の空白文字なので、先頭の空フィールドが
-# 黙って詰められ、plugin を持たない工程の path が owner 側へ入ってしまう。
-while IFS='|' read -r owner rel; do
-  [ -n "$rel" ] || continue
-  case "$rel" in
-    /*|*..*) echo "[error] steps の script は配布物内の相対pathに限る: ${rel}" >&2; exit 2 ;;
-  esac
-  base="$PB_ROOT"
-  if [ -n "$owner" ]; then
-    base=$(jq -r --arg k "$owner" '.[$k].root // ""' <<<"$deps")
-    [ -n "$base" ] || { echo "[error] steps の plugin「${owner}」が requires に無い" >&2; exit 2; }
-  fi
-  [ -f "$base/$rel" ] \
-    || { echo "[error] steps が指す script が無い: ${rel}（${base} 配下）" >&2; exit 2; }
-done < <(jq -r '.steps[]? | select(.when == null) | select(.script != null)
-  | ((.plugin // "") + "|" + .script)' <<<"$pb")
-
-# 入れ子の段取りも requires を通っていること。requires に無ければ実体を探せない。
-for want in $(jq -r '.steps[]? | select(.when == null) | select(.playbook != null) | .playbook' <<<"$pb"); do
-  nested=$(jq -r --arg k "$want" '.[$k].root // ""' <<<"$deps")
-  [ -n "$nested" ] || { echo "[error] steps が指す段取り「${want}」が requires に無い" >&2; exit 2; }
-  [ -f "$nested/playbook.yml" ] && [ -x "$nested/scripts/resolve.sh" ] \
-    || { echo "[error:dependency-invalid] plugin=${want} reason=playbook-entry-missing" >&2; exit 2; }
-done
 
 out=$(jq -cn --argjson pb "$pb" --argjson d "$deps" --arg root "$root" --arg pr "$PB_ROOT" \
-  --arg personal "$personal" --arg project "$override" --arg scope "$scope_root" \
+  --arg selected "$selected" --arg source "$source" --arg personal "$personal" --arg project "$override" --arg scope "$scope_root" \
   '{playbook:$pb, deps:$d, repo_root:$root, playbook_root:$pr,
     instructions:($pb.instructions // {}),
-    resolution:{schema:1, personal_config:$personal, project_config:$project, scope_root:$scope}}')
+    resolution:{schema:1, personal_config:$personal, project_config:$project, scope_root:$scope, selected_config:$selected, config_layer:$source}}')
+printf '%s\n' "$out" | python3 "$dependency_resolver" --check-steps || exit 2
 if [ "$explain" = "1" ]; then
   echo "# playbook: ${name}" >&2
   jq -r '.playbook.steps[] | "  \(.id): \(.skill // .script // ("playbook:" + .playbook))  — \(.purpose)"' <<<"$out" >&2

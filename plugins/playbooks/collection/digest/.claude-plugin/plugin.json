@@ -5,5 +5,10 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills"
+  "skills": "./skills",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
 }

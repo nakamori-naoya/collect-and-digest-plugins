@@ -29,7 +29,6 @@ fi
 <!-- BEGIN shared:skill-entry/config-load -->
 ```bash
 CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE"' EXIT
 ```
 
 **このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
@@ -63,7 +62,7 @@ python3 "${PLUGIN_ROOT}/scripts/message.py" check --config "$CFG_FILE" \
 |---|---|
 | `new` / `updated` | 本文を取得して書く |
 | `unchanged` | 何もしない |
-| `recheck` | 最新 ts が取れないので取得して突き合わせる |
+| `recheck` | 最新tsの一致に関係なく対象日全範囲を再取得して編集を突き合わせる |
 
 ## 5. 書き込む
 
@@ -82,3 +81,7 @@ python3 "${PLUGIN_ROOT}/scripts/message.py" check --config "$CFG_FILE" \
 0件でも「0件だった」と報告する。**黙って終わらない。**
 
 禁止事項は[保存工程](references/workflow.md)に従う。
+
+保存契約は追記archive。各収集実行で指定対象日の全範囲を再取得し、スレッドは取得可能な全返信を再取得する。指定していない過去日は自動更新しない。同じtsの編集はversionsへ旧本文を保持し、明示的な削除通知だけdeleted=trueとして収集済み本文を残す。取得結果に無いことを削除と推定しない。APIで編集・削除が返らない場合は保存物へ反映できない。本文・台帳は保存directory全体を排他し、途中中断は次回check/appendでjournalを再適用してから処理する。
+
+設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。

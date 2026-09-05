@@ -29,7 +29,6 @@ fi
 <!-- BEGIN shared:skill-entry/config-load -->
 ```bash
 CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE"' EXIT
 ```
 
 **このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
@@ -63,3 +62,7 @@ python3 "${PLUGIN_ROOT}/scripts/note.py" check --config "$CFG_FILE" \
 ## 5. 報告する
 
 対象日、新規・更新・変更なし、スキップ理由、保存先を報告する。0件でも黙って終わらない。報告形式と収集上の禁止事項も[収集工程の詳細](references/workflow.md)に従う。
+
+会議保存は本文と全metadataのhashで更新を判断し、source_updated_atだけの更新も台帳とfront matterへ反映する。対象日が変わった場合は旧日の主文書・transcriptを履歴として保持し、最新台帳のpathを現行文書として扱う。transcriptが後から省略された場合も旧副文書を履歴として保持し、現行主文書のpartsに無い副文書を現行データと見なさない。保存directory単位の排他とredo journalで本文・副文書・台帳の中断回復を行う。
+
+設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。

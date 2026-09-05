@@ -12,5 +12,10 @@
     "google-docs",
     "collect"
   ],
-  "skills": "./skills"
+  "skills": "./",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
 }

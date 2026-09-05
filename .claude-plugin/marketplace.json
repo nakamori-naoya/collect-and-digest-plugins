@@ -1,3 +1,15 @@
-{"name":"collect-and-digest","owner":{"name":"NaoyaNakamori"},"description":"会議、Slack、agent sessionの収集とdigestを一つのPlaybookパッケージとして配布するmarketplace","plugins":[
-  {"name":"collect-and-digest","source":"./plugins","description":"収集とdigest作成のPlaybookを一括提供する","version":"1.0.0"}
-]}
+{
+  "name": "collect-and-digest",
+  "owner": {
+    "name": "NaoyaNakamori"
+  },
+  "description": "会議、Slack、agent sessionの収集とdigestを一つのPlaybookパッケージとして配布するmarketplace",
+  "plugins": [
+    {
+      "name": "collect-and-digest",
+      "source": "./plugins",
+      "description": "収集とdigest作成のPlaybookを一括提供する",
+      "version": "2.0.0"
+    }
+  ]
+}

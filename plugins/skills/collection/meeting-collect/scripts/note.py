@@ -29,6 +29,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 SCHEMA = 1
 
 
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+import collection_store
+
 def atomic_write(path, content):
     """同じdirectoryの一意な一時fileへ書き、競合せず置換する。"""
     fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp",
@@ -115,9 +119,13 @@ def read_index(cfg):
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                entry = json.loads(line)
+                required = ['ts', 'source', 'path', 'content_hash', 'target_date', 'source_id']
+                if not isinstance(entry, dict) or any(not isinstance(entry.get(key), str) or not entry[key] for key in required):
+                    fail("台帳レコードschemaが壊れている。自動で読み飛ばさない")
+                out.append(entry)
             except json.JSONDecodeError:
-                continue
+                fail("台帳に破損したJSON行がある。自動で読み飛ばさない")
     return out
 
 
@@ -179,35 +187,7 @@ def ensure_within(base, path):
 
 
 def guard_dir(path):
-    """git 管理下かつ gitignore されていない場所への書き込みを拒否する。
-
-    議事録には人事・報酬・顧客名が入りうる。commit される経路を構造的に断つ。
-    """
-    # ディレクトリとして判定させるため末尾へ / を付ける。付けないと、
-    # .gitignore が "notes/" と書いてあってもディレクトリ未作成の初回だけ
-    # 「ignore されていない」と判定され、正しい設定なのに拒否される。
-    parent = path
-    while parent and not os.path.isdir(parent):
-        parent = os.path.dirname(parent)
-    try:
-        top = subprocess.run(
-            ["git", "-C", parent, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except Exception:
-        return
-    if top.returncode != 0:
-        return  # git 管理外。安全。
-    ignored = subprocess.run(
-        ["git", "-C", parent, "check-ignore", "-q", path.rstrip(os.sep) + os.sep],
-        capture_output=True, timeout=10,
-    )
-    if ignored.returncode != 0:
-        fail(
-            "notes_dir が git 管理下（{}）で gitignore もされていない。"
-            "議事録が commit される経路になるため書き込みを拒否する。"
-            "notes_dir を git 管理外へ移すか、当該パスを .gitignore へ追加すること。".format(top.stdout.strip())
-        )
+    return collection_store.guard_dir(path, fail)
 
 
 def yaml_scalar(v):
@@ -217,13 +197,7 @@ def yaml_scalar(v):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return str(v)
-    s = str(v)
-    if s == "":
-        return '""'
-    needs_quote = any(c in s for c in ':#{}[]&*!|>%@`"\'\n') or s[0] in "-? " or s[-1] == " "
-    if needs_quote:
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
-    return s
+    return json.dumps(str(v), ensure_ascii=False)
 
 
 def yaml_list(items):
@@ -284,6 +258,13 @@ def cmd_paths(args, cfg):
 
 
 def cmd_check(args, cfg):
+    root = notes_dir(cfg)
+    guard_dir(root)
+    with collection_store.locked(root):
+        return cmd_check_locked(args, cfg)
+
+
+def cmd_check_locked(args, cfg):
     rec = latest_record(cfg, args.source, args.source_id)
     if rec is None:
         decision = "new"
@@ -307,6 +288,13 @@ def cmd_check(args, cfg):
 
 
 def cmd_write(args, cfg):
+    root = notes_dir(cfg)
+    guard_dir(root)
+    with collection_store.locked(root):
+        return cmd_write_locked(args, cfg)
+
+
+def cmd_write_locked(args, cfg):
     args.target_date = safe_date(args.target_date)
     d = notes_dir(cfg)
     date_dir = ensure_within(d, os.path.join(d, args.target_date))
@@ -344,11 +332,6 @@ def cmd_write(args, cfg):
     filename = "{}-{}.md".format(args.source, args.source_id)
     path = ensure_within(d, os.path.join(date_dir, filename))
 
-    if rec is not None and rec.get("content_hash") == content_hash and os.path.exists(rec.get("path", "")):
-        print(json.dumps(collector_result(
-            "unchanged", "本文とtranscriptのhashが同じ", {"path": rec["path"]}, {"items": 1}), ensure_ascii=False))
-        return
-
     props = {}
     if args.props:
         try:
@@ -380,21 +363,14 @@ def cmd_write(args, cfg):
         "props": props,
     }
 
-    os.makedirs(date_dir, exist_ok=True)
-    atomic_write(path, build_front_matter(meta) + body)
-
-    # 更新後にtranscriptが無いなら、前版の副ファイルを残さない。主文書のpartsと
-    # 実ファイルを同じ状態にし、古い文字起こしを現行データと誤認させない。
-    if t_body is None and rec is not None:
-        old_date = rec.get("target_date")
-        if old_date:
-            old_t = ensure_within(d, os.path.join(
-                d, safe_date(old_date),
-                "{}-{}.transcript.md".format(args.source, args.source_id)))
-            try:
-                os.unlink(old_t)
-            except FileNotFoundError:
-                pass
+    record_meta = {k: v for k, v in meta.items() if k != "fetched_at"}
+    record_meta["target_date"] = args.target_date
+    record_hash = "sha256:" + hashlib.sha256(json.dumps(record_meta, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    if rec is not None and rec.get("record_hash") == record_hash and os.path.exists(path) and all(os.path.exists(os.path.join(date_dir, part)) for part in parts.values()):
+        print(json.dumps(collector_result("unchanged", "本文と全metadataが同じ", {"path": path}, {"items": 1}), ensure_ascii=False))
+        return
+    writes = {path: build_front_matter(meta) + body}
+    # Old dates and superseded transcripts are archives, never deleted implicitly.
 
     t_path = None
     if t_body is not None:
@@ -415,7 +391,7 @@ def cmd_write(args, cfg):
             "",
             "",
         ]
-        atomic_write(t_path, "\n".join(t_fm) + t_body)
+        writes[t_path] = "\n".join(t_fm) + t_body
 
     os.makedirs(d, exist_ok=True)
     entry = {
@@ -424,12 +400,15 @@ def cmd_write(args, cfg):
         "source_id": args.source_id,
         "source_updated_at": args.source_updated_at,
         "content_hash": content_hash,
+        "record_hash": record_hash,
+        "metadata": record_meta,
+        "previous_path": rec.get("path") if rec else None,
         "path": path,
         "target_date": args.target_date,
         "title": args.title,
     }
-    with open(index_path(cfg), "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    writes[index_path(cfg)] = collection_store.append_index(index_path(cfg), entry)
+    collection_store.commit(d, writes)
 
     decision = "updated" if rec is not None else "written"
     print(json.dumps(collector_result(
@@ -446,7 +425,7 @@ def run(fn, *a):
     """
     try:
         return fn(*a)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         fail("ファイル操作に失敗した: {}".format(e))
 
 

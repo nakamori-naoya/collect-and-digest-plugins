@@ -1,8 +1,10 @@
 {
   "name": "collect-and-digest",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "会議、Slack、agent sessionの収集とdigest作成を一括提供する",
-  "author": {"name": "NaoyaNakamori"},
+  "author": {
+    "name": "NaoyaNakamori"
+  },
   "skills": [
     "./skills/collection/meeting-collect",
     "./skills/collection/session-collect",
@@ -22,7 +24,8 @@
         "meeting-collect": "./skills/collection/meeting-collect",
         "session-collect": "./skills/collection/session-collect",
         "slack-collect": "./skills/collection/slack-collect"
-      }
+      },
+      "contractVersion": 1
     }
   }
 }

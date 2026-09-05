@@ -25,7 +25,6 @@ fi
 <!-- BEGIN shared:skill-entry/config-load -->
 ```bash
 CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE"' EXIT
 ```
 
 **このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
@@ -46,3 +45,5 @@ stderr へ、**工程の順番**と**依存の解決先**が出る。**設定が
 `${.playbook.steps}` から `provides` に `items` を持つ工程を選び、その `script` を実行して素材数を得る。
 
 **除外件数が素材件数より多いときは、置き場か期間の設定を疑う。**
+
+設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。
