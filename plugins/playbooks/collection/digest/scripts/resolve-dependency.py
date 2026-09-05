@@ -95,12 +95,39 @@ def validate_candidate(
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-version-invalid")
     if expected_directory_version is not None and version != expected_directory_version:
         fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="cache-version-mismatch")
+    metadata = data.get("metadata", {})
+    if metadata is None:
+        metadata = {}
+    if not isinstance(metadata, dict):
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-metadata-invalid")
+    harness = metadata.get("harness", {})
+    if harness is None:
+        harness = {}
+    if not isinstance(harness, dict):
+        fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="manifest-harness-metadata-invalid")
+    entry_root = canonical
+    entry_relative = harness.get("entryRoot")
+    if entry_relative is not None:
+        if (
+            not isinstance(entry_relative, str)
+            or not entry_relative.startswith("./")
+            or Path(entry_relative).is_absolute()
+            or ".." in Path(entry_relative).parts
+        ):
+            fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
+        try:
+            entry_root = (canonical / entry_relative).resolve(strict=True)
+        except OSError as exc:
+            fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason=str(exc))
+        if not entry_root.is_dir() or not contained(canonical, entry_root):
+            fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
     return {
         "plugin": plugin,
         "version": version,
         "runtime": runtime,
         "source_kind": source_kind,
-        "root": str(canonical),
+        "root": str(entry_root),
+        "package_root": str(canonical),
         "manifest": str(manifest),
     }
 
@@ -124,6 +151,20 @@ def dev_candidate(identity: str, runtime: str, plugin: str) -> dict[str, str] | 
 def repository_candidate(plugin_root: Path, marketplace: str, runtime: str, plugin: str) -> dict[str, str] | None:
     rel_market = Path(".agents/plugins/marketplace.json") if runtime == "codex" else Path(".claude-plugin/marketplace.json")
     for ancestor in (plugin_root, *plugin_root.parents):
+        bundle_manifest = manifest_path(ancestor, runtime)
+        if bundle_manifest.is_file():
+            bundle = load_json(bundle_manifest, "dependency-invalid")
+            if isinstance(bundle, dict) and bundle.get("name") == marketplace:
+                if plugin == marketplace:
+                    return validate_candidate(ancestor, runtime, plugin, "repository", ancestor)
+                internal = (
+                    bundle.get("metadata", {})
+                    .get("harness", {})
+                    .get("internalPlugins", {})
+                )
+                relative = internal.get(plugin) if isinstance(internal, dict) else None
+                if isinstance(relative, str):
+                    return validate_candidate(ancestor / relative, runtime, plugin, "repository", ancestor)
         manifest = ancestor / rel_market
         if not manifest.is_file():
             continue
@@ -131,17 +172,31 @@ def repository_candidate(plugin_root: Path, marketplace: str, runtime: str, plug
         if not isinstance(data, dict) or data.get("name") != marketplace:
             return None
         matches = [item for item in data.get("plugins", []) if isinstance(item, dict) and item.get("name") == plugin]
-        if len(matches) != 1:
+        if len(matches) > 1:
             fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="marketplace-entry")
-        source = matches[0].get("source")
-        if runtime == "codex":
-            if not isinstance(source, dict) or source.get("source") != "local" or not isinstance(source.get("path"), str):
-                fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="source")
-            relative = source["path"]
+        if len(matches) == 1:
+            source = matches[0].get("source")
+            if runtime == "codex":
+                if not isinstance(source, dict) or source.get("source") != "local" or not isinstance(source.get("path"), str):
+                    fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="source")
+                relative = source["path"]
+            else:
+                if not isinstance(source, str):
+                    fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="source")
+                relative = source
         else:
-            if not isinstance(source, str):
-                fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="source")
-            relative = source
+            bundle_manifest = manifest_path(ancestor, runtime)
+            bundle = load_json(bundle_manifest, "dependency-invalid")
+            if not isinstance(bundle, dict) or bundle.get("name") != marketplace:
+                fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="bundle-identity")
+            internal = (
+                bundle.get("metadata", {})
+                .get("harness", {})
+                .get("internalPlugins", {})
+            )
+            relative = internal.get(plugin) if isinstance(internal, dict) else None
+            if not isinstance(relative, str):
+                fail("dependency-invalid", plugin=plugin, marketplace=marketplace, source_kind="repository", reason="marketplace-entry")
         return validate_candidate(ancestor / relative, runtime, plugin, "repository", ancestor)
     return None
 
@@ -169,25 +224,29 @@ def cache_candidate(marketplace: str, runtime: str, plugin: str) -> dict[str, st
         cache = Path(os.environ.get("CODEX_PLUGIN_CACHE", Path.home() / ".codex/plugins/cache"))
     else:
         cache = Path(os.environ.get("CLAUDE_PLUGIN_CACHE", Path.home() / ".claude/plugins/cache"))
-    plugin_cache = cache / marketplace / plugin
-    if not plugin_cache.is_dir():
-        return None
-    candidates = [
-        (key, child)
-        for child in plugin_cache.iterdir()
-        if child.is_dir() and (key := semver_key(child.name)) is not None
-    ]
-    if not candidates:
-        return None
-    _, candidate = max(candidates, key=lambda item: (item[0], item[1].name))
-    return validate_candidate(
-        candidate,
-        runtime,
-        plugin,
-        "installed-cache",
-        cache,
-        expected_directory_version=candidate.name,
-    )
+    marketplace_cache = cache / marketplace
+    plugin_cache = marketplace_cache / plugin
+    if plugin_cache.is_dir():
+        candidates = [
+            (key, child)
+            for child in plugin_cache.iterdir()
+            if child.is_dir() and (key := semver_key(child.name)) is not None
+        ]
+        if candidates:
+            _, candidate = max(candidates, key=lambda item: (item[0], item[1].name))
+            return validate_candidate(
+                candidate,
+                runtime,
+                plugin,
+                "installed-cache",
+                cache,
+                expected_directory_version=candidate.name,
+            )
+
+    # 内部pluginは、呼び出し元自身が同じpackage内にある場合だけ
+    # repository_candidateで解決する。外部repositoryからcache内の内部実装を
+    # 指定されても公開契約として扱わない。
+    return None
 
 
 def main() -> int:

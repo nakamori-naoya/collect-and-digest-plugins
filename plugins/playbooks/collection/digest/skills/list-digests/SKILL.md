@@ -9,7 +9,12 @@ description: この playbook がどんな工程を、どの順で回すかと、
 
 <!-- BEGIN shared:skill-entry/root-block -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/playbooks/collection/digest" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/playbooks/collection/digest"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 ```
 
 `PLUGIN_ROOT`は配布物rootの絶対パスである。単一skill pluginではこの`SKILL.md`があるdirectory、複数skill pluginでは`skills/<skill>/`の2つ上に当たる。Claude Codeでは`${CLAUDE_PLUGIN_ROOT}`が自動展開される。

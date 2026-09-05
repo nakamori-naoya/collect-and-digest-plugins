@@ -1,0 +1,28 @@
+{
+  "name": "collect-and-digest",
+  "version": "1.0.0",
+  "description": "会議、Slack、agent sessionの収集とdigest作成を一括提供する",
+  "author": {"name": "NaoyaNakamori"},
+  "skills": [
+    "./skills/collection/meeting-collect",
+    "./skills/collection/session-collect",
+    "./skills/collection/slack-collect",
+    "./playbooks/collection/digest/skills/list-digests",
+    "./playbooks/collection/digest/skills/make-digest",
+    "./playbooks/collection/session-digest"
+  ],
+  "metadata": {
+    "harness": {
+      "installationSurface": "playbook-package",
+      "playbooks": {
+        "digest": "./playbooks/collection/digest",
+        "session-digest": "./playbooks/collection/session-digest"
+      },
+      "internalPlugins": {
+        "meeting-collect": "./skills/collection/meeting-collect",
+        "session-collect": "./skills/collection/session-collect",
+        "slack-collect": "./skills/collection/slack-collect"
+      }
+    }
+  }
+}

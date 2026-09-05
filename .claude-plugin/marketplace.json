@@ -1,7 +1,3 @@
-{"name":"collect-and-digest","owner":{"name":"NaoyaNakamori"},"description":"会議、Slack、agent sessionをcollectしdigestするmarketplace","plugins":[
-  {"name":"meeting-collect","source":"./plugins/skills/collection/meeting-collect","description":"会議メモを収集する","version":"0.6.14"},
-  {"name":"session-collect","source":"./plugins/skills/collection/session-collect","description":"agent session索引を収集する","version":"0.1.3"},
-  {"name":"slack-collect","source":"./plugins/skills/collection/slack-collect","description":"Slack投稿を収集する","version":"0.6.16"},
-  {"name":"digest","source":"./plugins/playbooks/collection/digest","description":"収集物から資料を1本作る","version":"0.12.1"},
-  {"name":"session-digest","source":"./plugins/playbooks/collection/session-digest","description":"agent sessionの日次要約を作る","version":"0.3.2"}
+{"name":"collect-and-digest","owner":{"name":"NaoyaNakamori"},"description":"会議、Slack、agent sessionの収集とdigestを一つのPlaybookパッケージとして配布するmarketplace","plugins":[
+  {"name":"collect-and-digest","source":"./plugins","description":"収集とdigest作成のPlaybookを一括提供する","version":"1.0.0"}
 ]}

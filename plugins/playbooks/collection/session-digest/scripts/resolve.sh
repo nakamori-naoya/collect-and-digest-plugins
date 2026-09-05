@@ -141,7 +141,7 @@ done < <(jq -r '.requires[] | [.plugin,.marketplace] | @tsv' <<<"$pb")
 # 存在しないスキルを指していれば、実行するエージェントはそれを呼べず自力で始める。
 # 「規律なしで資料が出る」は、資料が出ないことより悪い。ここで止める。
 available=""
-for dep_root in $(jq -r '.[].root' <<<"$deps"); do
+while IFS=$'\t' read -r dep_root package_root manifest_path; do
   # 単一skill pluginはrootのSKILL.md、複数skill pluginだけは
   # skills/<name>/SKILL.mdを持つ。どちらも深さが決まっているので、
   # **単体配布先で広域をfindしない。**
@@ -150,7 +150,19 @@ for dep_root in $(jq -r '.[].root' <<<"$deps"); do
     sk_name=$(sed -n 's/^name: //p' "$sk" | head -1)
     [ -z "$sk_name" ] || available="$available $sk_name"
   done
-done
+  # playbook packageは複数の内部skillをmanifestで明示する。呼び出し側は
+  # 内部plugin名へ依存せず、公開packageの宣言済みskillだけを利用する。
+  if [ -f "$manifest_path" ]; then
+    while IFS= read -r declared; do
+      [ -n "$declared" ] || continue
+      skill_root="$package_root/${declared#./}"
+      skill_file="$skill_root/SKILL.md"
+      [ -f "$skill_file" ] || continue
+      sk_name=$(sed -n 's/^name: //p' "$skill_file" | head -1)
+      [ -z "$sk_name" ] || available="$available $sk_name"
+    done < <(jq -r '.skills | if type=="array" then .[] elif type=="string" then . else empty end' "$manifest_path")
+  fi
+done < <(jq -r '.[] | [.root, (.package_root // .root), .manifest] | @tsv' <<<"$deps")
 # when: を持つ工程は、条件が偽なら実行されない。そのとき依存を宣言しないのは正しい。
 # だから**無条件の工程だけ**を、実体があることまで確かめる対象にする。
 unresolved=""
