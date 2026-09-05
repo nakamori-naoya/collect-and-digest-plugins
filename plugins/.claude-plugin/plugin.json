@@ -6,11 +6,7 @@
     "name": "NaoyaNakamori"
   },
   "skills": [
-    "./skills/collection/meeting-collect",
-    "./skills/collection/session-collect",
-    "./skills/collection/slack-collect",
-    "./playbooks/collection/digest/skills/list-digests",
-    "./playbooks/collection/digest/skills/make-digest",
+    "./playbooks/collection/digest",
     "./playbooks/collection/session-digest"
   ],
   "metadata": {

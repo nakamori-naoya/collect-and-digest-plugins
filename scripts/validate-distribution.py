@@ -200,6 +200,8 @@ def validate_repository(root: Path) -> int:
         discovered_by_runtime[runtime] = found
     if discovered_by_runtime["claude"] != declared_roots or discovered_by_runtime["codex"] != declared_roots:
         fail("未宣言または不足した内部plugin manifestがあります")
+    if set(skill_paths) != set(playbooks.values()):
+        fail("Playbook packageの公開skillsはplaybook entryだけでなければなりません")
 
     print(f"Distribution: passed (1 public package, {len(playbooks)} playbooks, {len(internals)} internal plugins)")
     return 0
@@ -286,7 +288,7 @@ def self_test(root: Path) -> int:
         ),
         (
             "internal-undeclared",
-            "宣言済み",
+            "未宣言または不足した内部plugin manifestがあります",
             remove_first_internal,
         ),
         (
