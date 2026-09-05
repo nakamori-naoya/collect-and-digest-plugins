@@ -7,7 +7,7 @@
     "files": {
       "resolve-dependency.py": "d37dc29bfcc763e377b70a2fda782e74193cb763c84d600baf8c17d5ab2d6d03",
       "resolve.sh": "aa9f1658ce32486854285e56ae40ab096b25bb0319949c4530c92460c30c6604",
-      "validate-distribution.py": "65936d1d98bc2b879da39ad7c2a9296a1563b5efbb6bf4dec306a83ab27d68ae",
+      "validate-distribution.py": "a0567339732b922b389e699b8e2fe5dc8e775d03d58f43c52866185909ae6cce",
       "prepare.sh": "bf512b18adaf4dd97a0190566a50f70b1680db386cba0eba415ab2289ce5bb11",
       "run-config.py": "ec8204a8d459ed09577fb8a8643dbdc56d4c23a5f3e522e9053c8cf5b1588c00",
       "doctor.py": "d06d199d6672c70723835396857cfbb8b0743f031315aee11937a64681e1a4f9",
@@ -41,7 +41,7 @@
     "scripts/release.py": "281880055f52c48e5c2e64931150f369b8fc2f97c004ac05c82ecb4bcf275fb6",
     "scripts/sync-runtime.py": "d4d136e745ed5d49494f1ead1844fbcea42530663d3eca9d56525f2084618c02",
     "scripts/test-hardening.py": "3840a0a341c269a1eb00dcaa256dc8d25cd96666b51368f3977bb2908c3afa22",
-    "scripts/validate-distribution.py": "65936d1d98bc2b879da39ad7c2a9296a1563b5efbb6bf4dec306a83ab27d68ae",
+    "scripts/validate-distribution.py": "a0567339732b922b389e699b8e2fe5dc8e775d03d58f43c52866185909ae6cce",
     "shared/playbook/resolve-dependency.py": "d37dc29bfcc763e377b70a2fda782e74193cb763c84d600baf8c17d5ab2d6d03",
     "shared/playbook/resolve.sh": "aa9f1658ce32486854285e56ae40ab096b25bb0319949c4530c92460c30c6604",
     "shared/prepare.sh": "bf512b18adaf4dd97a0190566a50f70b1680db386cba0eba415ab2289ce5bb11",
