@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Slack Collect",
     "shortDescription": "自分が関わったスレッドを丸ごと集める。メンションが1回でもあればスレッド全体が対象。permalink を必ず持ち、チャンネルとリンクをタグとして静的に保持する",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "slack-collectを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

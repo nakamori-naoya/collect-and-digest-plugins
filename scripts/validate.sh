@@ -5,6 +5,10 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plugin-repository-validation.XXXXXX") || exit 2
 trap 'rm -rf "$TMP_ROOT"' EXIT
 failed=0
+python3 "$ROOT/scripts/test-hardening.py" || failed=1
+python3 "$ROOT/scripts/sync-runtime.py" --check || failed=1
+python3 -m unittest discover -s "$ROOT/tests" -p test_collection_integrity.py || failed=1
+
 
 python3 "$ROOT/scripts/validate-distribution.py" "$ROOT" || failed=1
 python3 "$ROOT/scripts/validate-distribution.py" --self-test "$ROOT" || failed=1

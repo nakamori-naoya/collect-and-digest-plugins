@@ -31,6 +31,10 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "lib"))
+import collection_store
+
 def atomic_write(path, content):
     """同じdirectoryの一意な一時fileへ書き、競合せず置換する。"""
     fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp",
@@ -144,9 +148,15 @@ def read_index(cfg):
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                entry = json.loads(line)
+                required = ['ts', 'source', 'path', 'content_hash', 'target_date', 'bucket']
+                if not isinstance(entry, dict) or any(not isinstance(entry.get(key), str) or not entry[key] for key in required):
+                    fail("台帳レコードschemaが壊れている。自動で読み飛ばさない")
+                if type(entry.get("message_count")) is not int or entry["message_count"] < 0:
+                    fail("台帳message_countが壊れている")
+                out.append(entry)
             except json.JSONDecodeError:
-                continue
+                fail("台帳に破損したJSON行がある。自動で読み飛ばさない")
     return out
 
 
@@ -173,38 +183,7 @@ def safe_date(d):
 
 
 def guard_dir(path):
-    """git 管理下かつ gitignore されていない場所への書き込みを拒否する。
-
-    Slack の発言には人事・報酬・顧客名・個人名が入りうる。
-    commit される経路を構造的に断つ。
-    """
-    # ディレクトリとして判定させるため末尾へ / を付ける。付けないと、
-    # .gitignore が "notes/" と書いてあってもディレクトリ未作成の初回だけ
-    # 「ignore されていない」と判定され、正しい設定なのに拒否される。
-    parent = path
-    while parent and not os.path.isdir(parent):
-        parent = os.path.dirname(parent)
-    try:
-        top = subprocess.run(
-            ["git", "-C", parent, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=10,
-        )
-    except Exception:
-        return
-    if top.returncode != 0:
-        return
-    ignored = subprocess.run(
-        ["git", "-C", parent, "check-ignore", "-q", path.rstrip(os.sep) + os.sep],
-        capture_output=True, timeout=10,
-    )
-    if ignored.returncode != 0:
-        fail(
-            "slack_dir が git 管理下（{}）で gitignore もされていない。"
-            "Slack の発言が commit される経路になるため書き込みを拒否する。"
-            "slack_dir を git 管理外へ移すか、当該パスを .gitignore へ追加すること。".format(
-                top.stdout.strip()
-            )
-        )
+    return collection_store.guard_dir(path, fail)
 
 
 def configured_timezone(cfg):
@@ -273,13 +252,7 @@ def yaml_scalar(v):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return str(v)
-    s = str(v)
-    if s == "":
-        return '""'
-    needs = any(c in s for c in ':#{}[]&*!|>%@`"\'\n') or s[0] in "-? " or s[-1] == " "
-    if needs:
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
-    return s
+    return json.dumps(str(v), ensure_ascii=False)
 
 
 def yaml_list(items):
@@ -340,8 +313,12 @@ def read_messages(path):
                 m = json.loads(line)
             except json.JSONDecodeError:
                 fail("messages-file に JSON でない行がある")
-            if not m.get("ts"):
+            if not isinstance(m, dict):
+                fail("messages-file の各行はJSON objectに限る")
+            if not isinstance(m.get("ts"), str) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", m["ts"]):
                 fail("messages-file に ts の無いレコードがある")
+            if "versions" in m or ("deleted" in m and type(m["deleted"]) is not bool):
+                fail("versionsは保存側専用、deletedはbooleanに限る")
             # 並べ替えで float 変換するので、ここで弾く。
             # 後段で落ちると JSON 契約ではなく traceback が出る。
             try:
@@ -371,7 +348,7 @@ def parse_existing(path):
                 try:
                     out.append(json.loads(m.group(1)))
                 except json.JSONDecodeError:
-                    continue
+                    fail("保存済みmessageが破損している。自動で上書きしない")
     return out
 
 
@@ -424,6 +401,8 @@ def render(meta, messages, cfg):
         link = "  [link]({})".format(m["permalink"]) if m.get("permalink") else ""
         lines.append("<!-- slack-msg {} -->".format(json.dumps(m, ensure_ascii=False, sort_keys=True)))
         lines.append("**{} {}**{}{}".format(hhmm, who, tag, link))
+        if m.get("deleted") is True:
+            lines.append("[削除通知を受信。収集済み本文を履歴として保持]")
         lines.append("")
         for ln in (m.get("text") or "").splitlines() or [""]:
             lines.append("> {}".format(ln))
@@ -448,6 +427,13 @@ def collector_result(decision, reason, artifact=None, counts=None):
 
 
 def cmd_check(args, cfg):
+    root = slack_dir(cfg)
+    guard_dir(root)
+    with collection_store.locked(root):
+        return cmd_check_locked(args, cfg)
+
+
+def cmd_check_locked(args, cfg):
     args.target_date = safe_date(args.target_date)
     op = validate_operation(cfg, args.operation_id, args.bucket, args.thread_ref)
     rec = latest_record(cfg, args.bucket, args.target_date)
@@ -460,7 +446,7 @@ def cmd_check(args, cfg):
     elif not args.latest_ts:
         decision, reason = "recheck", "最新 ts が渡されていないので取得して突き合わせる"
     else:
-        decision, reason = "unchanged", "最新 ts が同じ"
+        decision, reason = "recheck", "追記archive: 各実行で対象日全範囲を再取得して編集を確認する"
     print(json.dumps(collector_result(
         decision, reason,
         {"path": (rec or {}).get("path"), "last_ts": (rec or {}).get("last_ts")},
@@ -468,6 +454,13 @@ def cmd_check(args, cfg):
 
 
 def cmd_append(args, cfg):
+    root = slack_dir(cfg)
+    guard_dir(root)
+    with collection_store.locked(root):
+        return cmd_append_locked(args, cfg)
+
+
+def cmd_append_locked(args, cfg):
     args.target_date = safe_date(args.target_date)
     op = validate_operation(cfg, args.operation_id, args.bucket, args.thread_ref)
     d = slack_dir(cfg)
@@ -500,6 +493,18 @@ def cmd_append(args, cfg):
     for m in incoming:
         if m["ts"] not in by_ts:
             added += 1
+        previous = by_ts.get(m["ts"])
+        if previous:
+            current = {k: v for k, v in previous.items() if k != "versions"}
+            updated = dict(m)
+            if m.get("deleted") is True:
+                updated = {**current, **m, "text": previous.get("text", "")}
+            versions = list(previous.get("versions", []))
+            if current != updated and current not in versions:
+                versions.append(current)
+            if versions:
+                updated["versions"] = versions
+            m = updated
         by_ts[m["ts"]] = m
     merged = [by_ts[k] for k in sorted(by_ts, key=lambda t: float(t))]
     credential_redacted = sum(1 for m in merged if m.get("redacted"))
@@ -535,12 +540,7 @@ def cmd_append(args, cfg):
     if len(out.encode("utf-8")) > max_bytes:
         fail("出力が上限 {} バイトを超えた。途中で切った写しは作らない。".format(max_bytes))
 
-    os.makedirs(date_dir, exist_ok=True)
-    atomic_write(path, out)
-
-    os.makedirs(d, exist_ok=True)
-    with open(index_path(cfg), "a", encoding="utf-8") as f:
-        f.write(json.dumps({
+    entry = {
             "ts": meta["fetched_at"],
             "source": "slack",
             "bucket": args.bucket,
@@ -551,7 +551,8 @@ def cmd_append(args, cfg):
             "content_hash": content_hash,
             "redacted": credential_redacted > 0,
             "path": path,
-        }, ensure_ascii=False) + "\n")
+        }
+    collection_store.commit(d, {path: out, index_path(cfg): collection_store.append_index(index_path(cfg), entry)})
 
     print(json.dumps(collector_result(
         "updated" if rec is not None else "written",
@@ -569,7 +570,7 @@ def run(fn, *a):
     """
     try:
         return fn(*a)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         fail("ファイル操作に失敗した: {}".format(e))
 
 

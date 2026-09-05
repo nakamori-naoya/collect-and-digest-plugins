@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Meeting Collect",
     "shortDescription": "対象日（JST）に属する Notion / Google Docs の議事録を、原文のまま1箇所へ集める。抽出も要約もしない。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "meeting-collectを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

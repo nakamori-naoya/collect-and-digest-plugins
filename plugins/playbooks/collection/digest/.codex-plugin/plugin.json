@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "digestを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

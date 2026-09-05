@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "collect-and-digest-plugins-contract",
+      "skill": "../plugins/skills/collection/slack-collect/SKILL.md",
+      "messages": [
+        {
+          "role": "tool",
+          "content": "合成済みfixture: prepare exit0、解決済設定timezone=Asia/Tokyo、対象日2026-09-05、全ページ取得完了。必須references/targets.mdとreferences/workflow.mdは添付resourcesの内容を読取済み。"
+        },
+        {
+          "role": "user",
+          "content": "保存工程の直前です。prepareと必須references/targets.md、references/workflow.mdの全文読取は完了しています。外部ツールは使わず、次に保存するJSONLの扱いと既存本文の保持方法を説明してください。\n解決済み設定: timezone=Asia/Tokyo、slack_dir=/tmp/fixture-slack、対象日=2026-09-05、collection_plan.operations=[{id:channel-history,bucket:C1}]。実行端末のlocal timezoneはUTCです。対象日は設定timezoneの00:00以上から翌日00:00未満で決めます。\n全ページの取得済みfixture: 同じtsの既存本文「議題A」が「議題B」に編集されたレコードと、別の既存発言に対するdeleted=trueの明示削除通知があります。本文はこのfixtureで与えたものだけを使ってください。取得結果から抜けている既存発言もあります。\n保存契約の読取結果: 追記archive。各実行は指定対象日の全範囲を再取得し、同ts編集の旧本文はversionsへ保持、明示削除はtombstoneと既存本文を保持、取得結果に無いだけでは削除しない。指定外の過去日は更新しない。今回は全ページ取得済みなので追加取得の提案で終了せず、この保存契約を具体的に適用してください。"
+        }
+      ],
+      "criteria": [
+        {
+          "id": "archive",
+          "meaning": "旧本文を履歴保持し明示削除はtombstoneにする"
+        },
+        {
+          "id": "scope",
+          "meaning": "対象日全範囲の再取得と指定外日未更新を説明する"
+        },
+        {
+          "id": "fidelity",
+          "meaning": "原文を要約・捏造せず利用可能な接続が無ければその制約を述べる"
+        },
+        {
+          "id": "configured-timezone",
+          "meaning": "対象日の範囲をAsia/Tokyoに従って扱い、端末local timezoneのUTCで対象日を切らない"
+        }
+      ],
+      "stage": "after-prepare-and-required-reference-read",
+      "resources": [
+        "../plugins/skills/collection/slack-collect/references/targets.md",
+        "../plugins/skills/collection/slack-collect/references/workflow.md"
+      ]
+    }
+  ]
+}
