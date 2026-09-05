@@ -2,6 +2,42 @@
 
 会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。
 
+## こんなときに使う
+
+**会議、Slack、AIセッションに散らばった活動を、日付と出典を保ったまま集め、後から追える資料へまとめたいときに使う。** 収集と要約を別工程にするため、原文の取得範囲とdigestの編集判断を混同しない。
+
+- 今日の会議記録をNotionとGoogle Docsから一箇所へ集めたい
+- 自分が関わったSlack threadをpermalink付きで保存したい
+- Claude CodeとCodexの活動を、原文を複製せず非公開索引にしたい
+- 複数の収集directoryから日次、週次、月次のdigestを作りたい
+- 決定事項だけ、または未決の論点だけを期間横断で追いたい
+
+## どのpluginを使うか
+
+| 欲しい結果 | 選ぶplugin |
+|---|---|
+| 対象日の会議原文を集める | `meeting-collect` |
+| 自分が関わったSlack threadを集める | `slack-collect` |
+| Claude Code / Codex sessionの非公開索引を作る | `session-collect` |
+| session索引から日次の短い記録を作る | `session-digest` |
+| 複数の収集物から期間資料を作る | `digest` |
+
+collectorは要約しない。`digest`は収集元を変更しない。この分離により、収集漏れの確認と要約内容のレビューを別々に行える。
+
+## 利用例
+
+```text
+今日の会議記録と、自分が関わったSlack threadを収集して。
+```
+
+```text
+今週の収集物から、決定事項に絞った週次digestを1本作って。
+```
+
+```text
+今日活動したClaude CodeとCodexのsessionを索引化し、日次記録を作って。
+```
+
 ## インストール
 
 ### Codex
