@@ -8,6 +8,13 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 mkdir -p "$TMP_ROOT/locks"
 # 利用者環境の解決経路を持ち込まない。必要な検査だけが自分で設定する。
 unset HARNESS_PLUGIN_DEV_ROOTS HARNESS_PLUGIN_CACHE_ROOT
+# **runtimeを開発環境から拾わせない。** resolverはHARNESS_PLUGIN_RUNTIMEが無いと
+# CLAUDE_PLUGIN_ROOT / CODEX_HOME や利用者のinstalled-cacheからruntimeを推測する。
+# 手元にそれらがあると通り、何も入っていないCI runnerでは
+# dependency-runtime-unresolved で落ちる。**検査するruntimeはここで明示する。**
+# 両runtimeを見るprobeは、その場で自分のHARNESS_PLUGIN_RUNTIMEを渡して上書きする。
+unset CLAUDE_PLUGIN_ROOT CODEX_HOME CLAUDE_PLUGIN_CACHE CODEX_PLUGIN_CACHE
+export HARNESS_PLUGIN_RUNTIME=codex
 OWN_MARKETPLACE=$(jq -r '.metadata.harness.marketplace // ""' "$ROOT/plugins/.claude-plugin/plugin.json")
 [ -n "$OWN_MARKETPLACE" ] || { echo '[validate] metadata.harness.marketplace を宣言していない' >&2; exit 2; }
 failed=0
