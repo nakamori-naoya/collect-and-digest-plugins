@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # playbook を解決して YAML で stdout へ出す。
 #
-#   resolve.sh [repo_root] [--explain] [--scope=<dir>]
+#   resolve.sh [repo_root] [--explain] [--scope=<dir>] [--bindings=<lock|none>] [--input=<abs>]
+#
+# --input を受けたとき、scripts/validate-input.sh があれば
+#   bash scripts/validate-input.sh <正規化済みの入力path>
+# を実行する。非0なら [error:input-schema] で exit 2 する。
+#
+# --bindings は**入口の段取りだけが作る**。渡されなければ自分が入口なので、
+# 3層（personal / project / scope）から dependencies.yml を1つ選び、run用のlockを作る。
+# 渡されたら層探索をせず、そのlockの実体を使う（content_hash が食い違えば binding-drift）。
+# --input は呼び出し元が渡す契約入力。検証して解決済みYAMLの .input へ載せる。
 #
 # --scope が無ければ、自分の名前から scope を決める（この段取りを入口とする実行の scope）。
 # あれば、それは**入口の段取りが決めた scope** なので、作り直さずそのまま下段へ流す。
@@ -20,11 +29,13 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
-repo=""; explain=0; scope_root=""; scope_given=0
+repo=""; explain=0; scope_root=""; scope_given=0; bindings_arg=""; bindings_given=0; input_arg=""
 for arg in "$@"; do
   case "$arg" in
     --explain) explain=1 ;;
     --scope=*) scope_root="${arg#--scope=}"; scope_given=1 ;;
+    --bindings=*) bindings_arg="${arg#--bindings=}"; bindings_given=1 ;;
+    --input=*) input_arg="${arg#--input=}" ;;
     *) [ -n "$repo" ] || repo="$arg" ;;
   esac
 done
@@ -50,8 +61,8 @@ if [ -d "$scope_root" ]; then
   for f in "$scope_root"/*; do
     [ -f "$f" ] || continue
     case "$(basename "$f")" in
-      *.config.yml) ;;
-      *) echo "[error] scope設定の名前が不正: ${f}（<プラグイン名>.config.yml のみ）" >&2; exit 2 ;;
+      *.config.yml|dependencies.yml) ;;
+      *) echo "[error] scope設定の名前が不正: ${f}（<プラグイン名>.config.yml または dependencies.yml のみ）" >&2; exit 2 ;;
     esac
   done
 fi
@@ -82,6 +93,7 @@ jq -e --arg expected "$name" --argjson bundled "$bundled" '
     (.purpose|type=="string" and length>0) and
     ((.needs // [])|type=="array" and all(.[]; type=="string" and test("^[A-Za-z0-9._-]+$"))) and
     ((.provides // [])|type=="array" and all(.[]; type=="string" and test("^[A-Za-z0-9._-]+$"))) and
+    ((.input // {})|type=="object") and (has("actions")|not) and
     ([.skill,.script,.playbook]|map(select(.!=null))|all(.[]; type=="string" and length>0)))) and
   ((keys - ($bundled|keys))|length==0)
 ' >/dev/null <<<"$pb" || { echo "[error] playbookのschema、name、未知キーのいずれかが不正: $selected" >&2; exit 2; }
@@ -129,25 +141,67 @@ done
 
 dependency_resolver="$PB_ROOT/scripts/resolve-dependency.py"
 [ -f "$dependency_resolver" ] || { echo "[error:dependency-invalid] resolver-missing=$dependency_resolver" >&2; exit 2; }
+
+# 束縛lock。入口だけが作り、子は渡されたものを使う。none は束縛機構そのものを止める試験用指定。
+bindings_lock=""
+if [ "$bindings_given" = "1" ]; then
+  bindings_lock="$bindings_arg"
+  [ -n "$bindings_lock" ] || { echo "[error:binding-file-missing] path=" >&2; exit 2; }
+else
+  lock_dir="${HARNESS_PLUGIN_RUN_DIR:-}"
+  if [ -z "$lock_dir" ] || [ ! -d "$lock_dir" ]; then
+    lock_dir=$(mktemp -d "${TMPDIR:-/tmp}/harness-bindings-XXXXXX") || exit 2
+  fi
+  # lock の path は正規形でなければならない（祖先の symlink を許さない検査に掛かる）。
+  lock_dir=$(cd "$lock_dir" && pwd -P) || exit 2
+  bindings_lock=$(python3 "$dependency_resolver" --create-lock --entry "$name" \
+    --repo-root "$root" --scope-root "$scope_root" --lock "$lock_dir/bindings.lock.yml") || exit 2
+fi
+
 deps='{}'
 while IFS=$'\t' read -r dep market; do
   candidate=$(python3 "$dependency_resolver" --plugin-root "$PB_ROOT" \
-    --plugin "$dep" --marketplace "$market") || exit 2
+    --plugin "$dep" --marketplace "$market" \
+    --logical "$dep" --contract "${market}/${dep}" \
+    --bindings "$bindings_lock") || exit 2
   deps=$(jq -c --arg k "$dep" --argjson v "$candidate" '.[$k]=$v' <<<"$deps") || exit 2
 done < <(jq -r '.requires[] | [.plugin,.marketplace] | @tsv' <<<"$pb")
 
+# 呼び出し元が渡した契約入力。共通検査（契約ID・版・能力・output_to）を通してから
+# .input へ載せる。契約固有のschema（必須キー・未知キー）は共通resolverには書けないので、
+# 配布物が scripts/validate-input.sh を持っていればそこへ委譲する（任意hook）。
+input_json='null'
+if [ -n "$input_arg" ]; then
+  input_checked=$(python3 "$dependency_resolver" --check-input --plugin-root "$PB_ROOT" --input "$input_arg") || exit 2
+  input_json=$(jq -c '.input' <<<"$input_checked") || exit 2
+  input_path=$(jq -r '.path' <<<"$input_checked") || exit 2
+  input_validator="$PB_ROOT/scripts/validate-input.sh"
+  if [ -f "$input_validator" ] && [ ! -L "$input_validator" ]; then
+    bash "$input_validator" "$input_path" >&2 || {
+      echo "[error:input-schema] validator=${input_validator} input=${input_path}" >&2; exit 2; }
+  fi
+fi
+
+bindings_file=""; bindings_layer="none"
+if [ "$bindings_lock" != "none" ] && [ -f "$bindings_lock" ]; then
+  bindings_file=$(jq -r '.bindings_file // ""' "$bindings_lock") || exit 2
+  bindings_layer=$(jq -r '.bindings_layer // "none"' "$bindings_lock") || exit 2
+fi
 
 out=$(jq -cn --argjson pb "$pb" --argjson d "$deps" --arg root "$root" --arg pr "$PB_ROOT" \
   --arg selected "$selected" --arg source "$source" --arg personal "$personal" --arg project "$override" --arg scope "$scope_root" \
+  --argjson input "$input_json" --arg ifile "${input_path:-}" \
+  --arg lock "$bindings_lock" --arg bfile "$bindings_file" --arg blayer "$bindings_layer" \
   '{playbook:$pb, deps:$d, repo_root:$root, playbook_root:$pr,
     instructions:($pb.instructions // {}),
-    resolution:{schema:1, personal_config:$personal, project_config:$project, scope_root:$scope, selected_config:$selected, config_layer:$source}}')
+    resolution:{schema:1, personal_config:$personal, project_config:$project, scope_root:$scope, selected_config:$selected, config_layer:$source,
+                bindings_lock:(if $lock=="" or $lock=="none" then null else $lock end),
+                bindings_file:(if $bfile=="" then null else $bfile end), bindings_layer:$blayer,
+                input_file:(if $ifile=="" then null else $ifile end)}}
+   | if $input==null then . else .input=$input end')
 printf '%s\n' "$out" | python3 "$dependency_resolver" --check-steps || exit 2
 if [ "$explain" = "1" ]; then
-  echo "# playbook: ${name}" >&2
-  jq -r '.playbook.steps[] | "  \(.id): \(.skill // .script // ("playbook:" + .playbook))  — \(.purpose)"' <<<"$out" >&2
-  echo "# 依存:" >&2
-  jq -r '.deps | to_entries[] | "  \(.key)@\(.value.marketplace) \(.value.version) [\(.value.runtime)/\(.value.source_kind)]: \(.value.root)"' <<<"$out" >&2
+  printf '%s\n' "$out" | python3 "$dependency_resolver" --explain-config >&2 || exit 2
   echo "# 選択した設定: ${source} (${selected})" >&2
   if [ -d "$scope_root" ]; then
     echo "# scope: ${scope_root}" >&2

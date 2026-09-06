@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "plugin": "collect-and-digest",
+  "version": "3.0.0",
+  "created_at": "2026-09-06T17:58:53.927793+00:00",
+  "notes": "write-docへの依存をrequires宣言とplaybook:工程へ統一し、保存依頼を契約入力YAMLへ寄せる。消費側契約lintを追加する。",
+  "breaking": "write-docへの依存をrequires: [{plugin, marketplace}]宣言とsteps[].playbook: write-docへ統一し、契約入力YAML以外の渡し方を廃止した。write-doc内部skillをskill:やscript:で指す経路は解決の時点で落ちる。session-digestとdigestの保存依頼を、name(と設定output.dir由来のoutput_directory)またはupdate_targetへ整理し、nameとupdate_targetを排他の必須にした。output_directory単独はexit 2になる。metadata.harnessにmarketplaceを追加し、scripts/lint-consumer-contract.pyを追加して消費側の文書・設定・scriptに依存先の内部名が現れたら落とすようにした。外部依存の入口参照を${.deps.<論理名>.entry}に限定し、${.deps.<論理名>.skills.<名前>}はresolverとlintがexternal-dependency-pathで落とす。束縛lockのschemaにbindingsが増えたため旧schemaのlockは非互換である。",
+  "migration": "playbook.ymlのwrite-doc依存をrequires宣言へ移し、steps[].playbook: write-docで呼ぶ。保存依頼はwrite-docの契約入力YAMLへ書き、新規はname、差し替えはupdate_targetを渡す。output.dirの設定値はoutput_directoryとして必要なときだけ添える。write-docの内部skill名を文書・設定・scriptから消す。lint-consumer-contract.pyに除外機構は無いので記述そのものを消す。依存参照は${.deps.<論理名>.entry}へ書き換え、実行中のrunが持つ旧schemaのlockは使い回さず入口が作り直す。",
+  "checks": {
+    "codex": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed",
+      "evidence": "HARNESS_PLUGIN_RUNTIME=codex を含む bash scripts/validate.sh: 配布構造・公開manifest・解決・負の試験・消費側契約lintを検査"
+    },
+    "claude": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed",
+      "evidence": "HARNESS_PLUGIN_RUNTIME=claude を含む bash scripts/validate.sh: 配布構造・公開manifest・解決・負の試験・消費側契約lintを検査"
+    },
+    "real-distribution": "fixtureだけで緑にせず、兄弟checkoutの実配布物 plugins/ を installed-cache へ写して解決させた",
+    "consumer-contract-lint": "scripts/lint-consumer-contract.py: codex / claude 両runtimeで 0 finding",
+    "binding": "契約IDと版で束縛し、bindings snapshot を持つ lock を入口が作り直すところまで通した",
+    "post-version-validation": "bash scripts/validate.sh: passed (exit 0)"
+  },
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "plugins/.codex-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
+    "plugins/.claude-plugin/plugin.json"
+  ]
+}

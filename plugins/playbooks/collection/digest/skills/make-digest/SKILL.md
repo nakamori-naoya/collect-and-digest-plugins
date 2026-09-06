@@ -54,9 +54,53 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 
 制限は設定の解決時に機械が検査する。**この文章を読み飛ばしても、設定が外れていれば止まる。**
 
-## 4. 追加promptを渡す
+## 4. write-docへ資料化を委譲する
 
-素材選択が返す`prompt`を、型や文章規律を置き換えない追加指示として資料作成工程へそのまま渡す。空文字なら追加指示なしとして扱う。設定にない指示を補わない。
+書くのはこのskillではない。依存先`write-doc`の公開playbookへ、**契約の入力・出力だけで**渡す。**委譲は2段で行い、実行設定の解決（prepare）を走らせるのは1回だけで、それはこちらの仕事である。** 相手の工程、内部の段取り、保存の仕組みには触れない。
+
+### 4-1. 契約入力のYAMLを書く
+
+repository外の実行専用subdirectoryへ0600で置く。書けるキーはこれだけである。
+
+```yaml
+contract: write-doc/write-doc
+version: 1
+document_type: <素材選択が返した資料の型>
+material:
+  - <素材選択が返した素材を書き出したファイルの絶対path>
+  - <静的情報の骨格を書き出したファイルの絶対path>
+output_format: <output.format の値>
+output_directory: <output.dir を展開した絶対path>
+name: <digests[].name と期間から決めたファイル名>
+references:
+  - <追加promptを書き出したファイルの絶対path>
+output_to: <結果を受け取るYAMLの絶対path>
+```
+
+- `material` は絶対pathの配列である。素材と骨格を別ファイルにして並べてよい。
+- 型は`document_type`として**固定して渡す**。素材選択が返した値以外を書かない。この型は実行時に決まるので、`playbook.yml`の`steps[].input`ではなくこの契約入力で渡す。
+- **ここに無いキーは書かない。** 未知のキーがある入力は受け付けられない。
+- 素材選択が返す`prompt`は、型や文章の規律を置き換えない追加指示である。空文字なら`references`ごと省く。設定にない指示を補わない。`references`へ書けるのはこのplaybookが持つ資料だけで、依存先が持つ資料は指さない。
+- **新規に作るときだけ** `name` を書く。保存先は`output.dir`が決めているので、あわせて `output_directory` も書く（`output_directory` だけを書くことはできない）。同じpathの既存資料を更新すると決めたときは、その2つを書かず、確認済みの絶対pathを `update_target` に書く。`name` と `update_target` は排他で、両方を書いた入力も、どちらも書かない入力も受け付けられない。
+
+### 4-2. 第1段 — こちらがprepareし、解決済みYAMLのpathを得る
+
+```bash
+WRITE_DOC_CFG=$(bash "${.deps.write-doc.root}/scripts/prepare.sh" "$(pwd)" \
+  --input=<4-1で書いたYAMLの絶対path> \
+  --scope=${.resolution.scope_root} \
+  --bindings=${.resolution.bindings_lock}) || exit 2
+```
+
+受け取ったscopeと束縛は作り直さず、そのまま渡す。exit 2 なら先へ進まない。**この段は省けない。** 省くと相手は単独起動と見なして自分でprepareし、契約入力もscopeも束縛も届かない。
+
+### 4-3. 第2段 — 入口SKILL.mdへ解決済みYAMLを渡して実行し、結果を受け取る
+
+`${.deps.write-doc.entry}` が入口SKILL.mdの絶対pathである。それを読み、**4-2で得た`$WRITE_DOC_CFG`を渡して**書かれた手順どおりに実行する。相手はprepareをやり直さず、渡された解決済みYAMLをそのまま使う。手順を要約したり、skill名やそれ以外のpathから別の入口を組み立てたりしない。
+
+完了したら`output_to`のYAMLを読む。`status: completed` なら `path` が保存された資料1本の絶対pathで、それを報告する。`status: failed` なら `reason` を報告して停止し、資料が書けたことにしない。
+
+4-2で作った解決済みYAMLはこちらの持ち物であり、相手は消さない。こちらも、後始末のために相手の配布物にあるscriptを実行しない。
 
 ## 5. 報告する
 
