@@ -146,6 +146,30 @@ bash scripts/validate.sh
 
 version更新は `python3 scripts/release.py --plugin <公開plugin名> --version <semver> --notes <変更内容> --breaking <互換性への影響> --migration <移行方法> --checks <codex/claudeの検証結果JSON>` で計画を確認し、`--apply` で両runtimeのmanifestとmarketplaceを更新する。検証結果には未検証も明示できる。配布・外部publishは別操作であり、このcommandでは行わない。
 
+### 依存先を束縛する`dependencies.yml`
+
+契約ID（`marketplace/plugin`）に対する実体を`{plugin, marketplace}`で束縛する。**top-levelは`version: 1`と`bindings`の2つだけである。** それ以外のキーがあると`[error:binding-file-invalid] reason=top-level-keys`で停止する。
+
+```yaml
+version: 1
+bindings:
+  "write-doc/write-doc": {plugin: write-documents, marketplace: my-marketplace}
+```
+
+置き場所は3層で、下ほど優先する。**層はマージせず、見つかった最優先の1ファイルだけを使う。**
+
+1. personal: `$XDG_CONFIG_HOME/harness-plugins/dependencies.yml`（未設定時は`~/.config/harness-plugins/dependencies.yml`）
+2. repository: `<repo>/.harness-plugins/dependencies.yml`
+3. scope: `<repo>/.harness-plugins/scopes/<入口playbook>/dependencies.yml`
+
+値に書けるのは`plugin`と`marketplace`だけで、**pathやversionは書けない。** 差し替え先はmarketplace経由（installed cache、同一repository、開発時の`HARNESS_PLUGIN_DEV_ROOTS`）で解決でき、manifestの`metadata.harness.implements`にその契約IDを宣言しているpluginでなければならない。宣言が無ければ`[error:binding-not-implemented]`で停止する。playbook側の`requires`は書き換えない。
+
+入口が選んだ束縛はrun専用のlockへ固定して子へ渡す。同じ実行の中で実体が食い違うことはなく、実行中に`dependencies.yml`を書き換えても、そのrunの解決は変わらない。
+
+### explainの読み方
+
+`scripts/prepare.sh`は`--explain`を引数に取らない。**explainは常にstderrへ出る。** stdoutは解決済みYAMLの絶対path1行だけなので、解決の内訳（選んだ設定層、依存の実体、束縛の出どころ、静的に解けた工程入力）はstderrで読む。`--explain`のような未知optionを渡すとusageを表示してexit 2で止まる。
+
 ### 破壊的変更と移行
 
 公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
