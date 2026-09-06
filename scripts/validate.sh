@@ -42,7 +42,11 @@ python3 "$ROOT/scripts/validate-distribution.py" --self-test "$ROOT" || failed=1
 # owning_bundle は所属package宣言から内外を判定する。合成fixtureの呼び出し元にも
 # bundle manifest（marketplace 宣言）が要る。
 write_bundle_manifest() {
-  local dir="$1" name="$2" market="$3" internals="${4:-{\}}"
+  # **既定値に波括弧を直接書かない。** bash 3.2（macOS の /bin/bash）は
+  # "${4:-{\}}" を {\} へ展開し、jq --argjson が不正なJSONとして落ちる。
+  # bash 5 では {} になるため、手元だけ緑になる。既定値は別の行で与える。
+  local dir="$1" name="$2" market="$3" internals="${4:-}"
+  [ -n "$internals" ] || internals='{}'
   local runtime
   for runtime in codex claude; do
     mkdir -p "$dir/.$runtime-plugin"
