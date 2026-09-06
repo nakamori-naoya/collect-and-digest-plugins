@@ -1,6 +1,6 @@
 {
   "name": "collect-and-digest",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "会議、Slack、agent sessionの収集とdigest作成を一括提供する",
   "author": {
     "name": "NaoyaNakamori"
