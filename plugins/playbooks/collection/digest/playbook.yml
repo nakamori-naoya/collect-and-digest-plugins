@@ -11,14 +11,14 @@ instructions:
 requires:
   - {plugin: write-doc, marketplace: write-doc}
 
-# sources: 全digestが読む置き場。output: 完成資料の保存先・形式・theme。
+# sources: 全digestが読む置き場。output: 完成資料の保存先と形式。
 # digests: 期間・型・追加promptを持つ実行定義一覧。
 sources: []
 labels: []
+# 保存先と媒体だけを持つ。見た目の設定は依存先の領分なので、ここでは扱わない。
 output:
   dir: docs
   format: html
-  theme: dark
 digests: []
 
 # stepsは上から実行する。needsは開始条件、providesは次工程へ渡す成果物。
@@ -36,6 +36,10 @@ steps:
 
   - id: document
     playbook: write-doc
+    # input を書かない。この工程へ渡す document_type は playbook.yml では決まらず、
+    # 実行時に選ばれた digests[] の1件が持つ資料の型で決まる。
+    # 静的に解ける値が無いので、ここに書いても嘘になる。実際に渡した型が相手の
+    # 契約に無ければ、契約入力を受け取った時点で write-doc 側が止める。
     purpose: 素材、型、追加指示を渡して資料を書かせる
     needs: [items, period, type, output, prompt, meta]
     provides: [path]

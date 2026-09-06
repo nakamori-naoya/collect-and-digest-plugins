@@ -32,7 +32,7 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
 <!-- END shared:skill-entry/config-load -->
 
-`${.instructions.execution.directive}` に従い、`${.playbook.sources}`、`${.playbook.digests}`、`${.deps}` を表示する。
+`${.instructions.execution.directive}` に従い、`${.playbook.sources}`、`${.playbook.digests}`、`${.deps}` を表示する。依存先について出すのは解決結果そのもの（論理名、実体、版、解決元）だけで、相手の中の工程や作りを推測して足さない。
 
 **各工程を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。渡さなければ効かない。入れ子の段取りへは、受け取ったものをそのまま渡す（自分の名前で作り直さない）。
 

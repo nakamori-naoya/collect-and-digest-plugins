@@ -8,7 +8,7 @@
   doc-meta.py skeleton --config <json|path> --digest <name> [--from --to] [--ref]
       -> 資料へ載せる情報の骨格（参加者だけ空。書き手が埋める）
 
-  （媒体へ写すのは doc-render の render-meta.py。ここは中身だけを扱う）
+  （ここは中身だけを扱う。媒体へ写すのは資料化を委譲した先の仕事である）
 
   doc-meta.py index <dir> [--recursive]
       -> ディレクトリ内の資料から情報を抜き出して JSONL
