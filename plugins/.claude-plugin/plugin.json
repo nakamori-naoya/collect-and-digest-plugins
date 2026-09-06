@@ -1,6 +1,6 @@
 {
   "name": "collect-and-digest",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "会議、Slack、agent sessionの収集とdigest作成を一括提供する",
   "author": {
     "name": "NaoyaNakamori"
@@ -12,6 +12,7 @@
   "metadata": {
     "harness": {
       "installationSurface": "playbook-package",
+      "marketplace": "collect-and-digest",
       "playbooks": {
         "digest": "./playbooks/collection/digest",
         "session-digest": "./playbooks/collection/session-digest"

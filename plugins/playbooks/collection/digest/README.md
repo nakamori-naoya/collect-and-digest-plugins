@@ -2,10 +2,10 @@
 
 **収集された複数の場所と実行定義を指定したら、日次・週次・月次の資料を1本作る。** 出力先はこのプラグインの設定が持つ。
 
-書くこと自体は `compose-doc` に任せる。**digest が決めるのは「どの素材から・どの期間で・どの型で・どこへ・何を追加で重視するか」だけ。**
+書くこと自体は `write-doc` に任せる。**digest が決めるのは「どの素材から・どの期間で・どの型で・どこへ・何を追加で重視するか」だけ。**
 
 ```
-notes/  slack/  ─→ digest ─→ compose-doc ─→ docs/2026-W33-weekly.html
+notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.html
 （収集された場所）    ↑                          （digest の設定が決める出力先）
                  期間・型・追加prompt
 ```
@@ -24,7 +24,7 @@ notes/  slack/  ─→ digest ─→ compose-doc ─→ docs/2026-W33-weekly.htm
 | `decision-log` | 決まったことだけを1件1エントリ |
 | `open-questions` | 未決の相談事項を、状態と滞留期間つきで |
 
-**これ以外は作れない。** 制限しないと「何でも作れる汎用ディスパッチャ」に戻る。収集物からチュートリアルや API リファレンスを作ることに意味は無い。**他の型が要るなら `compose-doc` を直接呼ぶ。**
+**これ以外は作れない。** 制限しないと「何でも作れる汎用ディスパッチャ」に戻る。収集物からチュートリアルや API リファレンスを作ることに意味は無い。**他の型が要るなら `write-doc` を直接呼ぶ。**
 
 制限は素材を選ぶ工程（`scripts/material.py`）が機械で検査する。**スキルの文章だけに乗せると、飛ばしても何の信号も出ない。**
 
@@ -32,7 +32,7 @@ notes/  slack/  ─→ digest ─→ compose-doc ─→ docs/2026-W33-weekly.htm
 $ material.py list --digest weekly
 [error] digest 'weekly' の type が使えない: tutorial
         digest から使えるのは period-digest decision-log open-questions のみ。
-        他の型が要るなら compose-doc を直接呼ぶこと。
+        他の型が要るなら write-doc を直接呼ぶこと。
 ```
 
 ## 使う
@@ -60,7 +60,6 @@ requires:
 output:                 # 全体の既定
   dir: docs
   format: html          # html / markdown
-  theme: dark           # dark / light / auto
 
 sources:                # 全digestで共有。相対pathはrepository root基準
   - dir: notes
@@ -100,7 +99,7 @@ steps:                     # 同梱playbook.ymlのsteps全体を持つ
 | `prompt` | 資料作成工程へそのまま渡す追加指示。追加指示がなければ空文字 |
 | `include_parts` | `part:` を持つファイル（文字起こし）を含めるか（既定 false） |
 | `type` | **必須。** 上の3種のいずれか |
-| `output.*` | 出力先・形式・テーマ。`compose-doc` へ上書きとして渡す |
+| `output.*` | 出力先と媒体。契約入力の `output_directory` / `output_format` として渡す |
 
 ## 資料の末尾に載る静的情報
 
@@ -176,7 +175,7 @@ jobs:
 ## しないこと
 
 - **収集しない。** 集めるのは収集プラグイン
-- **書かない。** 書くのは `compose-doc`
+- **書かない。** 書くのは `write-doc`
 - **チケットを作らない。** アクションは「未処理として一覧に出る」ところまで
 - **素材0件のときに空の資料を作らない**
 - **中身を機械で検査しない。** 型の allowlist 以外は見ない

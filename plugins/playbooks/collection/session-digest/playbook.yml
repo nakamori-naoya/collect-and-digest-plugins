@@ -26,6 +26,9 @@ steps:
   - id: document
     playbook: write-doc
     purpose: 日次記録の契約とprivacy境界を追加指示として渡し、Markdownを書いて保存する
+    # この呼び出しに渡す契約入力。型は設定で固定されているので静的に検査できる。
+    input:
+      document_type: ${.contract.document_type}
     needs: [items, input_hash, target_date, session_count]
     provides: [path]
   - id: cleanup

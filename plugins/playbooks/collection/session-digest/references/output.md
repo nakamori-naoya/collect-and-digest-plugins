@@ -30,4 +30,10 @@
 
 ## 保存契約
 
-最終Markdownの保存は`write-doc`だけが行う。新規作成では`<target_date>.md`をnameとして渡し、既存資料の更新では確認済みの絶対pathを`update_target`として渡す。session-digest固有の保存・置換scriptは持たない。
+最終Markdownの保存は`write-doc`だけが行う。渡し方は契約入力のYAML1本に閉じる。
+
+- **新規に作るとき**: `<target_date>.md`を`name`として渡す。保存先directoryはこのplaybookの設定が決めているので、あわせて`output_directory`も渡す（任意のキーだが、渡すなら`name`が要る）。
+- **既存資料を同じpathへ更新すると決めたとき**: `output_directory`と`name`を渡さず、確認済みの絶対pathを`update_target`として渡す。`name`と`update_target`は排他である。
+- どちらを渡すかを決めるのはsession-digest側である。同名の既存資料があるかを先に見て、front matterの`input_hash`が同じなら何も依頼しない。
+
+session-digest固有の保存・置換scriptは持たない。保存結果は`output_to`へ書かれたYAMLの`path`として受け取る。

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -88,8 +89,6 @@ def catalog_entry(path: Path, runtime: str) -> tuple[str, dict]:
     identity = {"name": entry.get("name"), "version": entry.get("version"), "source": source}
     if not all(isinstance(value, str) and value for value in identity.values()):
         fail(f"catalog identityが不正です: {path}")
-    if identity["name"] != name:
-        fail("公開plugin名はmarketplace名と一致しなければなりません")
     if identity["source"] != "./plugins":
         fail("公開sourceは./pluginsのPlaybook packageだけでなければなりません")
     return name, identity
@@ -99,6 +98,69 @@ def manifest(root: Path, runtime: str) -> tuple[Path, dict]:
     path = root / f".{runtime}-plugin/plugin.json"
     require_regular_file(path, f"{runtime} manifest")
     return path, load_json(path)
+
+
+IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$")
+CAPABILITY_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+IMPLEMENTS_KEYS = {"id", "version", "kind", "playbook", "types", "actions"}
+ENTRY_FILES = ("playbook.yml", "scripts/resolve.sh", "scripts/prepare.sh", "SKILL.md")
+
+
+def contract_id(value: object, label: str) -> tuple[str, str]:
+    if not isinstance(value, str) or value.count("/") != 1:
+        fail(f"{label}が契約IDの形ではありません: {value}")
+    marketplace, plugin = value.split("/")
+    if not IDENTIFIER.fullmatch(marketplace) or not IDENTIFIER.fullmatch(plugin):
+        fail(f"{label}が契約IDの形ではありません: {value}")
+    return marketplace, plugin
+
+
+def validate_implements(package_root: Path, harness: dict, marketplace_name: str,
+                        playbooks: dict[str, str]) -> None:
+    """公開契約の自己宣言を検査する（§3.4 I1〜I9）。kind は playbook のみ。"""
+    declared = harness.get("marketplace")
+    if not isinstance(declared, str) or not IDENTIFIER.fullmatch(declared):
+        fail("metadata.harness.marketplaceを宣言しなければなりません")
+    if declared != marketplace_name:
+        fail("metadata.harness.marketplaceがmarketplace名と一致しません")
+    raw = harness.get("implements")
+    if raw is None:
+        return
+    if not isinstance(raw, list):
+        fail("metadata.harness.implementsは配列でなければなりません")
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            fail("implementsの要素がobjectではありません")
+        unknown = sorted(set(entry) - IMPLEMENTS_KEYS)
+        if unknown:
+            fail(f"implementsに未知のキーがあります: {unknown[0]}")
+        for required in ("id", "version", "kind", "playbook"):
+            if required not in entry:
+                fail(f"implementsに{required}がありません")
+        # 差し替え先は他人の契約IDを実装するので、id の marketplace 部の一致は求めない。
+        contract_id(entry["id"], "implements.id")
+        if type(entry["version"]) is not int or entry["version"] != 1:
+            fail("implements.versionは1でなければなりません")
+        if entry["kind"] != "playbook":
+            fail("implements.kindはplaybookだけです")
+        name = entry["playbook"]
+        if not isinstance(name, str) or name not in playbooks:
+            fail(f"implements.playbookが宣言済みplaybookではありません: {name}")
+        component = safe_member(package_root, playbooks[name], f"playbooks.{name}")
+        for relative in ENTRY_FILES:
+            require_regular_file(component / relative, f"公開入口 {name}/{relative}")
+        for key in ("types", "actions"):
+            if key not in entry:
+                continue
+            values = entry[key]
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) and CAPABILITY_SLUG.fullmatch(value) for value in values
+            ):
+                fail(f"implements.{key}はslug文字列の配列でなければなりません")
+        if entry["id"] in seen:
+            fail(f"implementsのidが重複しています: {entry['id']}")
+        seen.add(entry["id"])
 
 
 def mapping(harness: dict, key: str) -> dict[str, str]:
@@ -140,7 +202,8 @@ def validate_repository(root: Path) -> int:
     codex_name, codex_entry = catalog_entry(root / ".agents/plugins/marketplace.json", "codex")
     if claude_name != codex_name or claude_entry != codex_entry:
         fail("Claude/Codex catalogの公開packageが一致しません")
-    package_name = claude_name
+    marketplace_name = claude_name
+    package_name = claude_entry["name"]
 
     manifests: dict[str, dict] = {}
     for runtime in ("claude", "codex"):
@@ -163,6 +226,7 @@ def validate_repository(root: Path) -> int:
 
     playbooks = mapping(harnesses["claude"], "playbooks")
     internals = mapping(harnesses["claude"], "internalPlugins")
+    validate_implements(package_root, harnesses["claude"], marketplace_name, playbooks)
     if set(playbooks) & set(internals):
         fail("playbook名と内部plugin名が重複しています")
     declared_roots: set[Path] = set()
@@ -245,7 +309,45 @@ def self_test(root: Path) -> int:
             data["metadata"]["harness"]["internalPlugins"].pop(key)
             write_json(path, data)
 
+    def set_harness(fixture: Path, mutate) -> None:
+        for runtime in ("claude", "codex"):
+            path = package_manifest(fixture, runtime)
+            data = load_json(path)
+            mutate(data["metadata"]["harness"])
+            write_json(path, data)
+
     cases = [
+        (
+            "marketplace-missing",
+            "metadata.harness.marketplace",
+            lambda f: set_harness(f, lambda h: h.pop("marketplace", None)),
+        ),
+        (
+            "marketplace-mismatch",
+            "marketplace名と一致しません",
+            lambda f: set_harness(f, lambda h: h.update({"marketplace": "other-market"})),
+        ),
+        (
+            "implements-kind",
+            "implements.kindはplaybookだけです",
+            lambda f: set_harness(f, lambda h: h.update({"implements": [
+                {"id": h["marketplace"] + "/" + next(iter(h["playbooks"])), "version": 1,
+                 "kind": "skill", "playbook": next(iter(h["playbooks"]))}]})),
+        ),
+        (
+            "implements-id-invalid",
+            "契約IDの形",
+            lambda f: set_harness(f, lambda h: h.update({"implements": [
+                {"id": next(iter(h["playbooks"])), "version": 1,
+                 "kind": "playbook", "playbook": next(iter(h["playbooks"]))}]})),
+        ),
+        (
+            "implements-unknown-key",
+            "未知のキー",
+            lambda f: set_harness(f, lambda h: h.update({"implements": [
+                {"id": h["marketplace"] + "/" + next(iter(h["playbooks"])), "version": 1,
+                 "kind": "playbook", "playbook": next(iter(h["playbooks"])), "skills": ["x"]}]})),
+        ),
         (
             "internal-exposed",
             "1件",
