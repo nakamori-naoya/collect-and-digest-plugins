@@ -28,10 +28,10 @@ from datetime import date, datetime, timedelta, timezone
 
 JST = timezone(timedelta(hours=9))
 
-# digest から作れるのは「収集物を状態順に並べ直す」3種だけ。
-# 制限しないと、収集物からチュートリアルや API リファレンスまで作れる
-# 汎用ディスパッチャに戻る。他の型が要るなら write-doc を直接呼ぶ。
-ALLOWED_TYPES = ("period-digest", "decision-log", "open-questions")
+# digest から作れるのは「収集物を状態順に並べ直す」period-digest だけ。
+# 制限しないと、収集物からハウツーやコンセプトまで作れる汎用ディスパッチャに戻る。
+# 他の型が要るなら write-doc を直接呼ぶ。
+ALLOWED_TYPES = ("period-digest",)
 
 
 def fail(msg, code=2):
