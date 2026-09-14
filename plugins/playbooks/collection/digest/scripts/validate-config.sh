@@ -9,7 +9,7 @@ jq -e '(.sources|type=="array" and all(.[]; type=="object" and
     ((keys - ["include_parts","labels","name","output","period","prompt","type"])|length==0) and
     (.name|type=="string" and test("^[A-Za-z0-9._-]+$")) and
     (.period=="daily" or .period=="weekly" or .period=="monthly") and
-    (.type=="period-digest" or .type=="decision-log" or .type=="open-questions") and
+    (.type=="period-digest") and
     (.prompt|type=="string") and
     ((.include_parts // false)|type=="boolean") and
     ((has("labels")|not) or (.labels|type=="array" and all(.[]; type=="string"))) and

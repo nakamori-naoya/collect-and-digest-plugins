@@ -379,7 +379,7 @@ validate_contract_enforcement() {
  "entryRoot":"./playbooks/write-doc","playbooks":{"write-doc":"./playbooks/write-doc"},
  "internalPlugins":{},"contractVersion":1,
  "implements":[{"id":"write-doc/write-doc","version":1,"kind":"playbook","playbook":"write-doc",
- "types":["period-digest","decision-log","open-questions"]}]}}}
+ "types":["period-digest"]}]}}}
 JSON
     done
   }
@@ -415,7 +415,7 @@ JSON
   fi
 
   # (C-3) 宣言していない文書型は渡せない。
-  stub_manifest '.metadata.harness.implements[0].types=["decision-log"]' || return 1
+  stub_manifest '.metadata.harness.implements[0].types=["adr"]' || return 1
   if TMPDIR="$TMP_ROOT/locks" HARNESS_PLUGIN_DEV_ROOTS="$map" \
      bash "$ROOT/plugins/playbooks/collection/session-digest/scripts/resolve.sh" "$ROOT" \
      >/dev/null 2> "$fixture/capability.err"; then

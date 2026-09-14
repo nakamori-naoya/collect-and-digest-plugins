@@ -49,7 +49,7 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 
 ## 3. 作れる型は3種だけ
 
-`period-digest` / `decision-log` / `open-questions` のいずれか。**これ以外は作れない。**
+`period-digest` だけ。**これ以外は作れない。**
 使い分けと、型を固定して渡す理由は[作れる型](references/types.md)。
 
 制限は設定の解決時に機械が検査する。**この文章を読み飛ばしても、設定が外れていれば止まる。**

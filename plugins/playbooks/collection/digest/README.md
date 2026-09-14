@@ -21,8 +21,6 @@ notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.html
 | 型 | 何を並べるか |
 |---|---|
 | `period-digest` | 期間 × 全ソース横断の1枚。決定／未決／アクション／動きの4区画 |
-| `decision-log` | 決まったことだけを1件1エントリ |
-| `open-questions` | 未決の相談事項を、状態と滞留期間つきで |
 
 **これ以外は作れない。** 制限しないと「何でも作れる汎用ディスパッチャ」に戻る。収集物からチュートリアルや API リファレンスを作ることに意味は無い。**他の型が要るなら `write-doc` を直接呼ぶ。**
 
@@ -31,7 +29,7 @@ notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.html
 ```
 $ material.py list --digest weekly
 [error] digest 'weekly' の type が使えない: tutorial
-        digest から使えるのは period-digest decision-log open-questions のみ。
+        digest から使えるのは period-digest のみ。
         他の型が要るなら write-doc を直接呼ぶこと。
 ```
 
