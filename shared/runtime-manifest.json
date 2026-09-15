@@ -18,11 +18,11 @@
       "sync-runtime.py": "33fe5efd14d883e6ba6bb2030c6810af162a47a9a7b1c9b75e2b73a1060fb670",
       "test-hardening.py": "81bb69de95c25ac1f0cdc4aede2e8e21930d41133772ca53059ccfdc65459b24",
       "lint-consumer-contract.py": "59b674d813e869369ff9c1ab7d4bf96209053968f53196c04cdd0eeb833f445d",
-      "validate.yml": "24a789b85a9b433e339fdb2a41fcb952820ba1d5e13c41142e6713dfc5372703"
+      "validate.yml": "3072e19edfb5dc643331e8d06e4e483321a6ae661bdf2d553bca8bcd3b324d48"
     }
   },
   "targets": {
-    ".github/workflows/validate.yml": "24a789b85a9b433e339fdb2a41fcb952820ba1d5e13c41142e6713dfc5372703",
+    ".github/workflows/validate.yml": "3072e19edfb5dc643331e8d06e4e483321a6ae661bdf2d553bca8bcd3b324d48",
     "plugins/playbooks/collection/digest/scripts/prepare.sh": "5035f21ddb9c8e19fa980d310c58387b5585576009c0eb997c7b2893499fb0fa",
     "plugins/playbooks/collection/digest/scripts/resolve-dependency.py": "87793e9277a4eb206107e689984bef97aeba6c779ca4dc9f2599cab836958001",
     "plugins/playbooks/collection/digest/scripts/resolve.sh": "7dee8c589d9f9e525ce41cc0ad4cbd519881ac8a932dee72c50b0a5d32aa9174",
