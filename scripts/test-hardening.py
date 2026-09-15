@@ -291,13 +291,16 @@ class Hardening(unittest.TestCase):
         repo=self.base/'eval';(repo/'evals').mkdir(parents=True)
         (repo/'SKILL.md').write_text('---\nname: fixture\ndescription: fixture\n---\nDo the specified job.')
         fixtures=repo/'evals/cases.json';fixtures.write_text(json.dumps({'cases':[{'id':'case','skill':'../SKILL.md','messages':[{'role':'user','content':'request'}],'criteria':[{'id':'meaning','meaning':'a meaningful explanation'}]}]}))
-        adapter=repo/'adapter.py';adapter.write_text("import json,sys\nr=json.load(sys.stdin)\nmode=r.get('settings',{}).get('mode')\nif mode=='adapter-error': raise SystemExit(7)\nif 'candidate_output' in r:\n print(json.dumps({'model':r['model'],'output':{'criteria':[{'id':'meaning','pass':mode!='semantic-fail','quote':'absent' if mode=='invalid-evidence' else 'actual answer','reason':'independent assessment'}]}}))\nelse: print(json.dumps({'model':r['model'],'output':'actual answer'}))\n")
+        adapter=repo/'adapter.py';adapter.write_text("import json,sys\nr=json.load(sys.stdin)\nmode=r.get('settings',{}).get('mode')\nif mode=='adapter-error': raise SystemExit(7)\nif 'candidate_output' in r:\n print(json.dumps({'model':r['model'],'output':[] if mode=='invalid-response' else {'criteria':[{'id':'meaning','pass':mode!='semantic-fail','quote':7 if mode=='invalid-type' else ('absent' if mode=='invalid-evidence' else 'actual answer'),'reason':'independent assessment'}]}}))\nelse: print(json.dumps({'model':r['model'],'output':'actual answer'}))\n")
         command=json.dumps(['python3',str(adapter)]);out=repo/'result.json'
         common=['python3',ROOT/'scripts/evaluate-skills.py','--fixtures',fixtures,'--model-command',command,'--judge-command',command,'--model','generator','--judge-model','judge','--output',out]
         result=self.call(*common,'--settings',json.dumps({'mode':'semantic-fail'}))
         self.assertEqual(result.returncode,0);report=json.loads(out.read_text());record=report['records'][0];self.assertEqual(report['schema'],2);self.assertEqual(record['status'],'recorded');self.assertFalse(record['judgment']['output']['criteria'][0]['pass'])
         result=self.call(*common,'--settings',json.dumps({'mode':'invalid-evidence'}))
         self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error');self.assertIn('evidence',record['error'])
+        for mode in ('invalid-type','invalid-response'):
+            result=self.call(*common,'--settings',json.dumps({'mode':mode}))
+            self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error')
         result=self.call(*common,'--settings',json.dumps({'mode':'adapter-error'}))
         self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error');self.assertIn('adapter failed',record['error'])
     def test_state_rejects_symlink_ancestor_before_creating_files(self):
@@ -645,7 +648,17 @@ class Hardening(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout)['runtime'], expected, result.stdout)
 
     def test_playbook_step_input_is_recorded_with_resolved_values(self):
-        """playbook: step の input は参照形のまま残し、解けた値を input_resolved に併記する。"""
+        """静的scalarだけを補助表示し、完全なprovider入力と誤認させない。
+
+        正本: playbook.ymlの静的propertyとsteps[].needs/provides。
+        入力: 文字列literal/scalar property、実行時placeholder、非scalar値/property。
+        正規化: ${.property}の静的scalarだけをlookupし、object/listを再帰解決しない。
+        合格述語: 静的scalarだけがinput_resolvedに現れ、元inputは全型を保持する。
+        診断: explainで未解決と解決対象外を区別し、完全inputではないと明示する。
+        正例: nameとdocument_type。反例: ${output_directory}を解決済みとして掲載。
+        境界例: 空配列、typed objectとそのproperty参照、false/0、${.missing}。
+        意味評価: 実行時にneedsからどの値を組み立てるかは同じagentが判断する。
+        """
         if not (ROOT/'shared/playbook/resolve.sh').exists(): self.skipTest('no playbook resolver')
         provider = self._provider('provider', 'write-doc', 'write-doc', 'write-doc/write-doc',
                                   'content-types', types=['north-star'])
@@ -654,10 +667,18 @@ class Hardening(unittest.TestCase):
                            XDG_CONFIG_HOME=str(self.base/'config'))
         entry = self._consumer(
             '  - {id: work, playbook: write-doc, purpose: fixture, provides: [x],\n'
-            '     input: {document_type: "${.document_type}", name: fixture.md, at: "${.missing}"}}\n'
+            '     input: {document_type: "${.document_type}", name: fixture.md, at: "${.missing}",\n'
+            '             output_directory: "${output_directory}", material: "prefix-${final_markdown}",\n'
+            '             questions: [], typed_material: {kind: text, content: fixture}, enabled: false, count: 0,\n'
+            '             questions_property: "${.questions}", typed_material_property: "${.typed_material}"}}\n'
             '  - {id: local, skill: do-local, purpose: fixture, needs: [x],\n'
             '     input: {document_type: "${.document_type}"}}\n',
             [('local-tool', 'demo'), ('write-doc', 'write-doc')])
+        playbook = entry/'playbook.yml'
+        playbook.write_text(playbook.read_text().replace(
+            'document_type: north-star\n',
+            'document_type: north-star\nquestions: []\ntyped_material: {kind: text, content: fixture}\n',
+            1))
         result = subprocess.run(['bash', str(entry/'scripts/resolve.sh'), str(self.base/'consumer')],
                                 text=True, capture_output=True, env=environment, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -666,8 +687,30 @@ class Hardening(unittest.TestCase):
                            text=True, capture_output=True, timeout=30).stdout)}
         # 参照形は残す。解けた分だけを併記し、解けない参照は載せない。
         self.assertEqual(steps['work']['input']['document_type'], '${.document_type}')
+        self.assertEqual(steps['work']['input']['questions'], [])
+        self.assertEqual(steps['work']['input']['typed_material'],
+                         {'kind': 'text', 'content': 'fixture'})
+        self.assertIs(steps['work']['input']['enabled'], False)
+        self.assertEqual(steps['work']['input']['count'], 0)
         self.assertEqual(steps['work']['input_resolved'],
                          {'document_type': 'north-star', 'name': 'fixture.md'})
+        for key in ('output_directory', 'material', 'questions', 'typed_material',
+                    'enabled', 'count', 'questions_property', 'typed_material_property'):
+            self.assertNotIn(key, steps['work']['input_resolved'])
+        resolved_json = subprocess.run(
+            ['yq', '-o=json', '-I=0', '.'], input=result.stdout,
+            text=True, capture_output=True, timeout=30, check=True).stdout
+        explanation = subprocess.run(
+            ['python3', str(entry/'scripts/resolve-dependency.py'), '--explain-config'],
+            input=resolved_json, text=True, capture_output=True, env=environment, timeout=30)
+        self.assertEqual(explanation.returncode, 0, explanation.stderr)
+        self.assertIn('providerへ渡す完全inputではない', explanation.stdout)
+        self.assertIn('input.output_directory = (未解決・実行時)', explanation.stdout)
+        self.assertIn('input.material = (未解決・実行時)', explanation.stdout)
+        self.assertIn('input.questions = (解決対象外・inputに保持)', explanation.stdout)
+        self.assertIn('input.typed_material = (解決対象外・inputに保持)', explanation.stdout)
+        self.assertIn('input.questions_property = (解決対象外・inputに保持)', explanation.stdout)
+        self.assertIn('input.typed_material_property = (解決対象外・inputに保持)', explanation.stdout)
         # playbook: 以外の step は対象外。
         self.assertNotIn('input_resolved', steps['local'])
 
@@ -1004,5 +1047,21 @@ class Hardening(unittest.TestCase):
         bound = explain()
         self.assertIn('[外部] write-doc → other-docs/other-doc 1.0.0 [', bound)
         self.assertIn('← personal', bound)
+
+    def test_consumer_lint_parses_skill_frontmatter_as_yaml(self):
+        """quoted/commented nameを受理し、本文の偽nameをidentityにしない。"""
+        lint_path = ROOT/'runtime-source/lint-consumer-contract.py'
+        if not lint_path.is_file():
+            lint_path = ROOT/'scripts/lint-consumer-contract.py'
+        spec = importlib.util.spec_from_file_location('consumer_lint_frontmatter', lint_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        skill = self.base/'SKILL.md'
+        skill.write_text(
+            '---\nname: "quoted-name" # YAML comment\ndescription: fixture\n---\n'
+            'name: body-decoy\n', encoding='utf-8')
+        self.assertEqual(module.skill_name(skill), 'quoted-name')
+        skill.write_text('---\nname: [not, a, string]\n---\nname: body-decoy\n', encoding='utf-8')
+        self.assertIsNone(module.skill_name(skill))
 
 if __name__=='__main__':unittest.main()

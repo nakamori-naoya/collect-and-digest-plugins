@@ -7,64 +7,33 @@ description: session-collectの非公開索引を使い、対象日に活動し�
 
 セッション原文を複製せず、対象日に活動したセッションごとの不透明IDと短い要約を1本のMarkdownへ保存する。
 
-## 0. プラグイン root を決める
+## 1. 実行契約を受け取る
 
-<!-- BEGIN shared:skill-entry/root-block -->
-```bash
-BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
-if [ -d "${BUNDLE_ROOT}/playbooks/collection/session-digest" ]; then
-  PLUGIN_ROOT="${BUNDLE_ROOT}/playbooks/collection/session-digest"
-else
-  PLUGIN_ROOT="${BUNDLE_ROOT}"
-fi
-```
+このSKILLを実行する同じagentが、同じdirectoryの`playbook.yml`と本文から参照する資料を全文読み、利用者の入力と明示された資料を保持した一つの文脈で最後まで判断する。本文の`${.playbook...}`と`${.instructions...}`は、agentが`playbook.yml`から読んだ値を指し、外部runtimeから注入される値ではない。認知工程を別skillへrelayせず、`skill:`工程の責務と参照資料をこのagent自身が適用する。決定論的な`script:`工程は同じdirectoryの実在するtoolへ明示した入力pathを渡し、stdoutまたは指定した出力pathから結果を受け取る。`playbook:`工程だけは依存先の公開Skillを名前で呼び、その公開入力と公開結果だけを使う。設定生成、scope、依存先rootの探索、一時設定の寿命管理は行わない。必要な入力、宣言値、tool結果、公開Skill結果が無ければ推測せず停止する。
 
-`PLUGIN_ROOT`は配布物rootの絶対パスである。単一skill pluginではこの`SKILL.md`があるdirectory、複数skill pluginでは`skills/<skill>/`の2つ上に当たる。Claude Codeでは`${CLAUDE_PLUGIN_ROOT}`が自動展開される。
-<!-- END shared:skill-entry/root-block -->
-
-## 1. 設定を読み込む
-
-<!-- BEGIN shared:skill-entry/config-load -->
-```bash
-CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-```
-
-**このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
-
-本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
-<!-- END shared:skill-entry/config-load -->
-
-`${.instructions.execution.directive}` / `${.playbook.output.dir}` / `${.playbook.output.timezone}` / `${.playbook.output.max_chars_per_session}` / `${.playbook.output.subagents}` / `${.playbook.contract}` / `${.playbook.steps}`に従う。資料化と保存は依存先`write-doc`の公開playbookへ委譲する（手順は3節）。相手の中の作りを前提にせず、契約の入力・出力だけでやり取りする。
-
-**各工程を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。入れ子の段取りへは受け取ったscopeをそのまま渡し、自分の名前で作り直さない。
+`${.instructions.execution.directive}` / `${.playbook.output.dir}` / `${.playbook.output.timezone}` / `${.playbook.output.subagents}` / `${.playbook.contract}` / `${.playbook.steps}`に従う。資料化と保存は依存先`write-doc`の公開playbookへ委譲する（手順は3節）。相手の中の作りを前提にせず、契約の入力・出力だけでやり取りする。
 
 ## 2. 工程を実行する
 
-解決済み`${.playbook.steps}`を上から実行し、needsが揃わない工程は開始しない。collectがpartialまたはprovisionalを返したら停止し、日次資料を作らない。
+`${.playbook.steps}`の責務を同じagentが上から実行し、needsが揃わない工程は開始しない。collectがpartialまたはprovisionalを返したら停止し、日次資料を作らない。
 
-material工程ではsession-collectが返したday indexを次へ渡す。
+`collect`は公開入力`user_input`を受け、同じagentが適用する`collect-sessions`の実在手順で対象日を確定する。外部runtimeが`target_date`を注入したことにせず、collectが直接返した`target_date`だけを後続工程へ渡す。
 
-```bash
-python3 "${PLUGIN_ROOT}/scripts/material.py" \
-  --day-index <非公開日別索引> --date <YYYY-MM-DD> \
-  --out-dir ~/.local/state/harness-plugins/session-digest/material
-```
-
-`--out-dir`はrepository外の実行専用subdirectoryに固定する。HOME、TMPDIR root、共有directoryそのものは渡さない。
-
-`${.playbook.output.subagents}`が`include`のときだけ`--include-subagents`を付ける。
+material工程ではsession-collectが返したday indexを次へ渡す。同じagentがrepository外にrun専用subdirectoryを作り、HOME、TMPDIR root、共有directoryそのものを使わない。`${.playbook.output.subagents}`が`include`のときだけsubagent分を含める。
 
 ## 3. write-docへ資料化を委譲する
 
-material内の`source_path`は要約時だけ読む。全文や中間要約を保存しない。何を残し、何を混入させないかは[privacy境界](references/privacy.md)、本文・metadata・タグの形は[日次記録の契約](references/output.md)に従う。1セッションの本文は`${.playbook.output.max_chars_per_session}`以内とし、超過時はtruncateせず書き直す。
+material内の`source_path`は要約時だけ読む。全文や中間要約を保存しない。何を残し、何を混入させないかは[privacy境界](references/privacy.md)、本文・metadata・タグの形は[日次記録の契約](references/output.md)に従う。各セッションから後で仕事へ再利用できる事実と判断を選び、必要な根拠を文字数で機械的に削らない。
 
-`document`工程で契約ID `write-doc/write-doc` の公開playbookへ、次の入力objectを直接渡す。入力YAML、解決済みYAML、依存先の`prepare.sh`、結果受取用ファイルは作らない。
+`document`工程で公開Skill `write-doc:write-doc`へ、次の入力objectを直接渡す。中間ファイルや依存先の実行状態は作らない。
 
-- `material`: `material.py`が返した`material_path`を`{kind: file, path: <絶対path>}`にした1要素のobject配列
+- `material`: material工程が返した`material_path`を`{kind: file, path: <絶対path>}`にした1要素のobject配列
 - `document_type`: `${.playbook.contract.document_type}`の値
 - `output_directory`: `${.playbook.output.dir}`を展開した絶対path
 - `name`: `${.playbook.contract.output_name}`の`<target_date>`を対象日へ置換した`.md`ファイル名
 - `references`: `references/output.md`と`references/privacy.md`の読み取り可能な絶対path配列
+
+`items`という別名や、material内のセッション配列そのものを`material`へ渡さない。公開YAMLのdocument工程は`material_path`をneedし、この1つの絶対pathから上記のtyped `material`を同じagentが組み立てる。`material_path`が無い、通常ファイルでない、または読み取れない場合はwrite-docを呼ばず停止する。
 
 新規作成では`output_directory`と`name`を必ず組にする。既存資料を同じpathへ更新すると利用者が明示した場合だけ、この2つに代えて`update_target`へ確認済みの絶対pathを渡す。両方式を同時に渡さない。
 
@@ -74,13 +43,4 @@ material内の`source_path`は要約時だけ読む。全文や中間要約を�
 
 成果物は`<output.dir>/<対象日>.md`。同名の既存資料があるときは、**依頼する前に**こちらで既存を読み、front matterの`input_hash`を比較する。同じなら何も依頼せず終了する。異なり、かつ利用者からその既存pathの更新が明示されているときだけ、3-1で`update_target`にその絶対pathを書く。明示が無ければ資料化を依頼しない。独自の保存scriptやforceオプションは持たない。0件では空の成果物を書かない。
 
-cleanupはdocumentが返した`path`とcollectが返した`index`、今回の`material_path`が揃った後にだけ最終stepとして実行する。3つの明示pathを`material.py --cleanup`へ渡す。
-
-```bash
-python3 "${PLUGIN_ROOT}/scripts/material.py" --cleanup \
-  --material-path <material_path> --path <path> --index <index>
-```
-
-出力JSON全体を`cleanup_report`として扱う。cleanupはmaterial file 1件だけをunlinkし、0700の実行専用directoryは残す。
-
-設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。
+cleanupはdocumentが返した`path`とcollectが返した`index`、今回の`material_path`が揃った後にだけ同じagentが実行する。決定論的toolから直接受け取った出力object全体を`cleanup_report`として扱う。cleanupが削除してよいのは今回のmaterial file 1件だけであり、0700のrun専用directoryは残す。

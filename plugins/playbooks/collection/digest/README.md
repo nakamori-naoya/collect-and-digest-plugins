@@ -12,11 +12,11 @@ notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.md
 
 ## なぜ自分で書かないか
 
-自分で書くと、HTML の雛形もマーカーの見た目も文章規律も、`doc-compose` と**二重に持つ**ことになる。片方を直しても、もう片方が古いまま残る。
+自分で書くと、Markdown の構成も文章規律も、`write-doc` と**二重に持つ**ことになる。片方を直しても、もう片方が古いまま残る。
 
-**依存は片方向。** `doc-compose` は digest の存在を知らないし、digest が無くても単体で使える。
+**依存は片方向。** `write-doc` は digest の存在を知らないし、digest が無くても単体で使える。
 
-## 使える型は3種だけ
+## 使える型は1種だけ
 
 | 型 | 何を並べるか |
 |---|---|
@@ -50,6 +50,7 @@ $ material.py list --digest weekly
 version: 2
 name: digest
 description: 収集物から資料を1本作る
+inputs: [user_input]
 instructions:
   execution: {directive: stepsを上から順に実行し、needsを前工程のprovidesから受け取る}
 requires:
@@ -72,7 +73,7 @@ digests:
 
   - name: weekly
     period: weekly      # daily / weekly / monthly
-    type: period-digest # 必須。3種のいずれか。既定へは倒さない
+    type: period-digest # 必須。既定へは倒さない
     prompt: "今週の決定と来週の行動を対にする"
 
   - name: month
@@ -83,9 +84,10 @@ digests:
       format: markdown
 
 steps:                     # 同梱playbook.ymlのsteps全体を持つ
-  - {id: material, script: scripts/material.py, purpose: 置き場と期間から素材を選ぶ, provides: [items, skipped, period, type, output, prompt]}
+  - {id: interpret-request, agent_work: invoking_agent, purpose: 利用者の依頼をdigests宣言と照合する, needs: [user_input], provides: [digest_name, reference_time]}
+  - {id: material, script: scripts/material.py, purpose: 置き場と期間から素材を選ぶ, needs: [digest_name, reference_time], provides: [items, skipped, period, type, output, prompt]}
   - {id: meta, script: scripts/doc-meta.py, purpose: 静的情報の骨格を作る, needs: [items, period], provides: [meta]}
-  - {id: document, playbook: write-doc, purpose: 素材と型から資料を書く, needs: [items, period, type, output, prompt, meta], provides: [path]}
+  - {id: document, playbook: write-doc, purpose: 素材と型から資料を書く, needs: [items, period, type, output, prompt, meta], provides: [status, path, reason]}
 ```
 
 `requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時に選んだmanifestのidentityと、工程が指すskillやplaybookの存在を検査する。
@@ -96,7 +98,7 @@ steps:                     # 同梱playbook.ymlのsteps全体を持つ
 | `period` | `daily` / `weekly`（月曜始まり）/ `monthly` |
 | `prompt` | 資料作成工程へそのまま渡す追加指示。追加指示がなければ空文字 |
 | `include_parts` | `part:` を持つファイル（文字起こし）を含めるか（既定 false） |
-| `type` | **必須。** 上の3種のいずれか |
+| `type` | **必須。** `period-digest`だけ |
 | `output.*` | Markdownの出力先。絶対pathへ解決して`output_directory`として直接渡す |
 
 ## 資料の末尾に載る静的情報
