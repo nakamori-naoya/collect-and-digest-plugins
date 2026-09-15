@@ -5,7 +5,7 @@
 書くこと自体は `write-doc` に任せる。**digest が決めるのは「どの素材から・どの期間で・どの型で・どこへ・何を追加で重視するか」だけ。**
 
 ```
-notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.html
+notes/  slack/  ─→ digest ─→ write-doc ─→ docs/2026-W33-weekly.md
 （収集された場所）    ↑                          （digest の設定が決める出力先）
                  期間・型・追加prompt
 ```
@@ -57,7 +57,7 @@ requires:
 
 output:                 # 全体の既定
   dir: docs
-  format: html          # html / markdown
+  format: markdown      # Markdown固定
 
 sources:                # 全digestで共有。相対pathはrepository root基準
   - dir: notes
@@ -97,7 +97,7 @@ steps:                     # 同梱playbook.ymlのsteps全体を持つ
 | `prompt` | 資料作成工程へそのまま渡す追加指示。追加指示がなければ空文字 |
 | `include_parts` | `part:` を持つファイル（文字起こし）を含めるか（既定 false） |
 | `type` | **必須。** 上の3種のいずれか |
-| `output.*` | 出力先と媒体。契約入力の `output_directory` / `output_format` として渡す |
+| `output.*` | Markdownの出力先。絶対pathへ解決して`output_directory`として直接渡す |
 
 ## 資料の末尾に載る静的情報
 

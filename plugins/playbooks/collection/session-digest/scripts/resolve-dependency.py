@@ -24,7 +24,12 @@ LOCK_ENTRY_KEYS = {
     "content_hash", "source_kind",
 }
 CAPABILITY_KEYS = {"document_type": "types", "action": "actions"}
-ENTRY_FILES = ("playbook.yml", "scripts/resolve.sh", "scripts/prepare.sh", "SKILL.md")
+REQUIRED_IMPLEMENTATION_VERSIONS = {"write-doc/write-doc": 2}
+ENTRY_FILES_BY_CONTRACT = {
+    1: ("playbook.yml", "scripts/resolve.sh", "scripts/prepare.sh", "SKILL.md"),
+    2: ("playbook.yml", "SKILL.md"),
+}
+DIRECT_INVOCATION_CONTRACTS = {"grill/grill", "write-doc/write-doc"}
 
 PROPERTY_REFERENCE = re.compile(r"^\$\{\s*(\.[A-Za-z0-9_.\[\]\"'-]+)\s*\}$")
 
@@ -324,6 +329,9 @@ def classify_dependency(
 def validate_implements(root: Path, data: object, plugin: str, source_kind: str) -> list[dict]:
     """§3.4 I1〜I9。I10（両runtime一致）は配布validatorの担当。"""
     harness = harness_metadata(data)
+    contract_version = harness.get("contractVersion", 1)
+    if type(contract_version) is not int or contract_version not in ENTRY_FILES_BY_CONTRACT:
+        fail("dependency-incompatible", reason="contract-version", version=str(contract_version))
     declared_market = harness.get("marketplace")
     if declared_market is not None and (
         not isinstance(declared_market, str) or not IDENTIFIER.fullmatch(declared_market)
@@ -355,7 +363,7 @@ def validate_implements(root: Path, data: object, plugin: str, source_kind: str)
                 fail("implements-schema", plugin=plugin, source_kind=source_kind,
                      reason="missing-" + required)
         contract_id(item["id"], "id", "implements-id-invalid")
-        if type(item["version"]) is not int or item["version"] != 1:
+        if type(item["version"]) is not int or item["version"] != contract_version:
             fail("implements-version-invalid", plugin=plugin, source_kind=source_kind,
                  version=str(item["version"]))
         if item["kind"] != "playbook":
@@ -366,7 +374,10 @@ def validate_implements(root: Path, data: object, plugin: str, source_kind: str)
             fail("implements-entry-missing", plugin=plugin, source_kind=source_kind,
                  playbook=str(name), reason="undeclared-playbook")
         entry_root = resolved_descendant(root, playbooks[name], plugin, source_kind)
-        for relative in ENTRY_FILES:
+        entry_files = (("playbook.yml", "SKILL.md")
+                       if item["id"] in DIRECT_INVOCATION_CONTRACTS
+                       else ENTRY_FILES_BY_CONTRACT[contract_version])
+        for relative in entry_files:
             member = safe_path(entry_root, relative, exists=False)
             if not member.is_file() or member.is_symlink():
                 fail("implements-entry-missing", plugin=plugin, source_kind=source_kind,
@@ -567,7 +578,7 @@ def validate_candidate(
         if not contained(canonical, entry_root):
             fail("dependency-invalid", plugin=plugin, source_kind=source_kind, reason="entry-root-invalid")
     contract = harness.get("contractVersion", 1)
-    if type(contract) is not int or contract not in {1}:
+    if type(contract) is not int or contract not in ENTRY_FILES_BY_CONTRACT:
         fail("dependency-incompatible", reason="contract-version", version=str(contract))
     implements = validate_implements(canonical, data, plugin, source_kind)
     skills = public_skills(canonical, data)
@@ -718,8 +729,10 @@ def resolve_step_input(config: dict, step: dict, key: str):
 
 def contract_entry(dep: dict) -> dict | None:
     contract = dep.get("contract")
+    required_version = REQUIRED_IMPLEMENTATION_VERSIONS.get(contract, 1)
     for entry in dep.get("implements") or []:
-        if isinstance(entry, dict) and entry.get("id") == contract and entry.get("version") == 1:
+        if (isinstance(entry, dict) and entry.get("id") == contract
+                and entry.get("version") == required_version):
             return entry
     return None
 
@@ -751,7 +764,8 @@ def check_steps(config: dict, selected: str | None = None) -> None:
         if dep.get("content_hash") != content_hash(root):
             fail("dependency-changed", reason="content-hash", plugin=dep.get("plugin", "unknown"))
         contract = manifest.get("metadata", {}).get("harness", {}).get("contractVersion", 1)
-        if type(contract) is not int or contract not in {1} or contract != dep.get("contract_version"):
+        if (type(contract) is not int or contract not in ENTRY_FILES_BY_CONTRACT
+                or contract != dep.get("contract_version")):
             fail("dependency-incompatible", reason="contract-version")
         if validate_implements(root, manifest, dep.get("plugin", "unknown"), "check-steps") != (dep.get("implements") or []):
             fail("dependency-changed", reason="implements", plugin=dep.get("plugin", "unknown"))
@@ -819,8 +833,9 @@ def check_steps(config: dict, selected: str | None = None) -> None:
                 dep = deps[name]
                 base = Path(dep["root"])
                 safe_path(base, "playbook.yml")
-                safe_path(base, "scripts/resolve.sh")
-                safe_path(base, "scripts/prepare.sh")
+                if dep.get("contract") not in DIRECT_INVOCATION_CONTRACTS:
+                    safe_path(base, "scripts/resolve.sh")
+                    safe_path(base, "scripts/prepare.sh")
                 if name in external:
                     entry = contract_entry(dep)
                     if entry is None:
@@ -1203,9 +1218,10 @@ def main() -> int:
         )
     scope = classify_dependency(bundle_root, bundle, marketplace, plugin, candidate)
     if scope == "external":
+        required_version = REQUIRED_IMPLEMENTATION_VERSIONS.get(contract, 1)
         entry = next(
             (item for item in candidate["implements"]
-             if item["id"] == contract and item["version"] == 1),
+             if item["id"] == contract and item["version"] == required_version),
             None,
         )
         if entry is None:

@@ -306,7 +306,7 @@ validate_consumer_contract_lint() {
 
 # (B) 実配布物に対する解決 — 兄弟checkoutのproviderを開発mapで指し、両runtimeで解決する。
 validate_real_provider_resolution() {
-  local status=0 runtime pb name out json dep_root dep_entry dep_entry_skill entry declared
+  local status=0 runtime pb name out json dep_contract dep_root dep_entry dep_entry_skill entry declared
   if [ -z "$provider_dev_map" ]; then
     echo '[validate] 実配布物への開発mapが作れていない' >&2
     return 1
@@ -330,16 +330,24 @@ validate_real_provider_resolution() {
         and all($ext[]; . as $d
           | ($d.contract | type == "string")
           and (($d.implements
-                | map(select(.id == $d.contract and .version == 1 and .kind == "playbook"))
+                | map(select(.id == $d.contract
+                             and .version == (if .id=="write-doc/write-doc" then 2 else 1 end)
+                             and .kind == "playbook"))
                 | length) == 1)
           and ($d.entry | type == "string")
           and ($d.entry_skill | type == "string"))' >/dev/null <<<"$json" \
         || { echo "[validate] ${name}($runtime)の解決結果が契約の形になっていない" >&2; status=1; }
-      # 公開面は .root 直下の3点と .entry だけ。entry は入口SKILL.mdの実pathで、
+      # 直接呼び出す契約はplaybook.ymlとSKILL.mdだけを公開面に持つ。
+      # 旧契約は従来のruntime入口も必要とする。entry は入口SKILL.mdの実pathで、
       # entry_skill はその front matter の name と一致すること。
-      while IFS=$'\t' read -r dep_root dep_entry dep_entry_skill; do
+      while IFS=$'\t' read -r dep_contract dep_root dep_entry dep_entry_skill; do
         [ -n "$dep_root" ] || continue
-        for entry in playbook.yml scripts/resolve.sh scripts/prepare.sh SKILL.md; do
+        if [ "$dep_contract" = write-doc/write-doc ] || [ "$dep_contract" = grill/grill ]; then
+          entries='playbook.yml SKILL.md'
+        else
+          entries='playbook.yml scripts/resolve.sh scripts/prepare.sh SKILL.md'
+        fi
+        for entry in $entries; do
           [ -f "$dep_root/$entry" ] || { echo "[validate] 公開面の入口が無い: $dep_root/$entry" >&2; status=1; }
         done
         [ -f "$dep_entry" ] || { echo "[validate] entryが実ファイルでない: $dep_entry" >&2; status=1; }
@@ -349,7 +357,7 @@ validate_real_provider_resolution() {
         [ "$declared" = "$dep_entry_skill" ] \
           || { echo "[validate] entry_skillが入口SKILL.mdのnameと違う: $dep_entry_skill != $declared" >&2; status=1; }
       done < <(jq -r '.deps[] | select(.dependency_scope == "external")
-                      | [.root, .entry, .entry_skill] | @tsv' <<<"$json")
+                      | [.contract, .root, .entry, .entry_skill] | @tsv' <<<"$json")
     done < <(find "$ROOT/plugins" -name playbook.yml -type f | sort)
   done
   return "$status"
@@ -365,7 +373,7 @@ validate_contract_enforcement() {
   local map="$fixture/dev-map.json"
   local status=0 runtime name pb
 
-  mkdir -p "$stub/playbooks/write-doc/scripts" "$stub/.claude-plugin" "$stub/.codex-plugin" \
+  mkdir -p "$stub/playbooks/write-doc" "$stub/.claude-plugin" "$stub/.codex-plugin" \
            "$probe/scripts" "$fixture/probe/plugins/.claude-plugin" "$fixture/probe/plugins/.codex-plugin" \
            "$fixture/repo" "$TMP_ROOT/locks"
   stub=$(cd "$stub" && pwd -P) || return 1
@@ -373,20 +381,18 @@ validate_contract_enforcement() {
     local runtime
     for runtime in claude codex; do
       jq "$1" > "$stub/.${runtime}-plugin/plugin.json" <<'JSON' || return 1
-{"name":"write-doc","version":"4.0.0","description":"契約v1だけを実装する試験用provider",
+{"name":"write-doc","version":"7.0.0","description":"直接呼び出す契約v2の試験用provider",
  "skills":["./playbooks/write-doc"],
  "metadata":{"harness":{"installationSurface":"playbook-package","marketplace":"write-doc",
  "entryRoot":"./playbooks/write-doc","playbooks":{"write-doc":"./playbooks/write-doc"},
- "internalPlugins":{},"contractVersion":1,
- "implements":[{"id":"write-doc/write-doc","version":1,"kind":"playbook","playbook":"write-doc",
+ "internalPlugins":{},"contractVersion":2,
+ "implements":[{"id":"write-doc/write-doc","version":2,"kind":"playbook","playbook":"write-doc",
  "types":["period-digest"]}]}}}
 JSON
     done
   }
   printf -- '---\nname: write-doc\ndescription: fixture\n---\nfixture\n' > "$stub/playbooks/write-doc/SKILL.md"
   printf '%s\n' 'version: 2' 'name: write-doc' 'description: fixture' > "$stub/playbooks/write-doc/playbook.yml"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/playbooks/write-doc/scripts/prepare.sh"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/playbooks/write-doc/scripts/resolve.sh"
   stub_manifest '.' || return 1
   jq -n --arg r "$stub" '{schema:1,dependencies:{"write-doc/write-doc":$r}}' > "$map" || return 1
 
@@ -425,7 +431,7 @@ JSON
   fi
   stub_manifest '.' || return 1
 
-  # (C-4) 公開面4点以外の触り方は、どの形でも落ちる。
+  # (C-4) 公開契約以外の触り方は、どの形でも落ちる。
   local runtime_scripts="$ROOT/shared"
   for runtime in claude codex; do
     jq -n '{name:"probe",version:"1.0.0",description:"fixture",skills:["./playbooks/probe"],
@@ -513,13 +519,16 @@ if yq -o=json -I=0 '.' "$session_digest/playbook.yml" | jq -e '
     (.requires | any(.plugin=="write-doc" and .marketplace=="write-doc")) and
     (.requires | all(.marketplace=="write-doc" or .marketplace=="collect-and-digest")) and
     (.steps | any(.id=="document" and .playbook=="write-doc"
-                  and .input.document_type=="${.contract.document_type}")) and
+                  and .input.document_type=="${.contract.document_type}"
+                  and .provides==["status","path","reason"])) and
     (.steps | any(.id=="material" and (.provides | index("material_path")))) and
     (.steps[-1].id=="cleanup" and .steps[-1].script=="scripts/material.py" and .steps[-1].provides==["cleanup_report"]) and
     (.steps[-1].needs | sort==["index","material_path","path"]) and
     ([.steps[].id] == ["collect","material","document","cleanup"])' >/dev/null \
   && [ ! -e "$session_digest/scripts/store.py" ] \
   && rg -F '最終Markdownの保存は`write-doc`だけが行う' "$session_digest/references/output.md" >/dev/null \
+  && ! rg -n '\$\{\.deps\.write-doc\.(root|entry)\}|^[[:space:]]*contract: write-doc/write-doc|^[[:space:]]*version: 1' \
+       "$session_digest/SKILL.md" "$ROOT/plugins/playbooks/collection/digest/skills/make-digest/SKILL.md" >/dev/null \
   && rg -F -- '--out-dir ~/.local/state/harness-plugins/session-digest/material' "$session_digest/SKILL.md" >/dev/null \
   && rg -F -- 'material.py" --cleanup' "$session_digest/SKILL.md" >/dev/null \
   && rg -F '出力JSON全体を`cleanup_report`として扱う。cleanupはmaterial file 1件だけをunlinkし、0700の実行専用directoryは残す。' "$session_digest/SKILL.md" "$session_digest/references/output.md" >/dev/null; then

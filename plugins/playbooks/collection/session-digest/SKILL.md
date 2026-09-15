@@ -58,51 +58,17 @@ python3 "${PLUGIN_ROOT}/scripts/material.py" \
 
 material内の`source_path`は要約時だけ読む。全文や中間要約を保存しない。何を残し、何を混入させないかは[privacy境界](references/privacy.md)、本文・metadata・タグの形は[日次記録の契約](references/output.md)に従う。1セッションの本文は`${.playbook.output.max_chars_per_session}`以内とし、超過時はtruncateせず書き直す。
 
-**委譲は2段で行う。実行設定の解決（prepare）を走らせるのは1回だけで、それはこちらの仕事である。** 相手の工程、内部の段取り、保存の仕組みには一切触れない。
+`document`工程で契約ID `write-doc/write-doc` の公開playbookへ、次の入力objectを直接渡す。入力YAML、解決済みYAML、依存先の`prepare.sh`、結果受取用ファイルは作らない。
 
-### 3-1. 契約入力のYAMLを書く
+- `material`: `material.py`が返した`material_path`を`{kind: file, path: <絶対path>}`にした1要素のobject配列
+- `document_type`: `${.playbook.contract.document_type}`の値
+- `output_directory`: `${.playbook.output.dir}`を展開した絶対path
+- `name`: `${.playbook.contract.output_name}`の`<target_date>`を対象日へ置換した`.md`ファイル名
+- `references`: `references/output.md`と`references/privacy.md`の読み取り可能な絶対path配列
 
-repository外の実行専用subdirectoryへ0600で置く。書けるキーはこれだけである。
+新規作成では`output_directory`と`name`を必ず組にする。既存資料を同じpathへ更新すると利用者が明示した場合だけ、この2つに代えて`update_target`へ確認済みの絶対pathを渡す。両方式を同時に渡さない。
 
-```yaml
-contract: write-doc/write-doc
-version: 1
-document_type: <${.playbook.contract.document_type} の値>
-material:
-  - <material.py が返した material_path>
-output_format: <${.playbook.output.format} の値>
-output_directory: <${.playbook.output.dir} を展開した絶対path>
-name: <${.playbook.contract.output_name} の <target_date> を対象日へ置換した値>
-references:
-  - <references/output.md の絶対path>
-  - <references/privacy.md の絶対path>
-output_to: <結果を受け取るYAMLの絶対path>
-```
-
-- `material` は絶対pathの配列である。1本でも配列で書く。
-- **新規に作るときだけ** `name` を書く。保存先は`${.playbook.output.dir}`が決めているので、あわせて `output_directory` も書く（`output_directory` だけを書くことはできない）。
-- **既存資料を同じpathへ更新すると決めたときは**、`output_directory` と `name` を書かず、確認済みの絶対pathを `update_target` に書く。`name` と `update_target` は排他で、両方を書いた入力も、どちらも書かない入力も受け付けられない。
-- `references` はこのplaybookが持つ2本だけを渡す。依存先が持つ資料を指さない。
-- **ここに無いキーは書かない。** 未知のキーがある入力は受け付けられない。
-
-### 3-2. 第1段 — こちらがprepareし、解決済みYAMLのpathを得る
-
-```bash
-WRITE_DOC_CFG=$(bash "${.deps.write-doc.root}/scripts/prepare.sh" "$(pwd)" \
-  --input=<3-1で書いたYAMLの絶対path> \
-  --scope=${.resolution.scope_root} \
-  --bindings=${.resolution.bindings_lock}) || exit 2
-```
-
-受け取ったscopeと束縛は作り直さず、そのまま渡す。exit 2 なら先へ進まない。**この段は省けない。** 省くと相手は単独起動と見なして自分でprepareし、契約入力もscopeも束縛も届かない。
-
-### 3-3. 第2段 — 入口SKILL.mdへ解決済みYAMLを渡して実行し、結果を受け取る
-
-`${.deps.write-doc.entry}` が入口SKILL.mdの絶対pathである。それを読み、**3-2で得た`$WRITE_DOC_CFG`を渡して**書かれた手順どおりに実行する。相手はprepareをやり直さず、渡された解決済みYAMLをそのまま使う。手順を要約したり、skill名やそれ以外のpathから別の入口を組み立てたりしない。
-
-完了したら`output_to`のYAMLを読む。`status: completed` なら `path` が保存された資料1本の絶対pathで、これをdocument工程の`path`として次へ渡す。`status: failed` なら `reason` を報告して停止し、資料が書けたことにしない。
-
-3-2で作った解決済みYAMLはこちらの持ち物であり、相手は消さない。こちらも、後始末のために相手の配布物にあるscriptを実行しない。
+公開playbookが直接返した`status`を確認する。`completed`なら`path`をdocument工程の`path`として次へ渡す。`failed`なら`reason`を報告して停止し、資料が書けたことにしない。返却値に`path`と`reason`の両方がある場合や、契約にない値がある場合も停止する。
 
 ### 同じpathに既存資料があるとき
 
