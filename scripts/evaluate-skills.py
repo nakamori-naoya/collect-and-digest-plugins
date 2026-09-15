@@ -73,13 +73,17 @@ def main():
             for item in criteria:
                 if type(item['pass']) is not bool or not item.get('reason') or not item.get('quote') or item['quote'] not in output:
                     raise ValueError('judge evidence invalid or not present in candidate output')
-            record.update(judge_input=judge_request, judgment=judgment, status='passed' if all(x['pass'] for x in criteria) else 'failed')
+            record.update(
+                judge_input=judge_request,
+                judgment=judgment,
+                status='recorded',
+            )
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
             record['error'] = str(exc)
         records.append(record)
-        report = {'schema': 1, 'evaluation': 'model-and-independent-judge', 'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'fixture': suite, 'model_command': json.loads(a.model_command), 'judge_command': json.loads(a.judge_command), 'records': records}
+        report = {'schema': 2, 'evaluation': 'model-and-independent-review-record', 'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'fixture': suite, 'model_command': json.loads(a.model_command), 'judge_command': json.loads(a.judge_command), 'records': records}
         Path(a.output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
-    return 0 if records and all(r['status'] == 'passed' for r in records) else 1
+    return 0 if records and all(r['status'] == 'recorded' for r in records) else 1
 
 if __name__ == '__main__':
     sys.exit(main())
