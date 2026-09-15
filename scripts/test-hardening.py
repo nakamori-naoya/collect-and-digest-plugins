@@ -287,14 +287,19 @@ class Hardening(unittest.TestCase):
         self.assertEqual(sorted(pairs),sorted(types))
         for pair in pairs.values():
             for path in pair.values():self.assertTrue((plugin/path).is_file(),path)
-    def test_semantic_runner_requires_evidence(self):
+    def test_semantic_runner_records_assessment_but_only_operational_errors_fail(self):
         repo=self.base/'eval';(repo/'evals').mkdir(parents=True)
         (repo/'SKILL.md').write_text('---\nname: fixture\ndescription: fixture\n---\nDo the specified job.')
         fixtures=repo/'evals/cases.json';fixtures.write_text(json.dumps({'cases':[{'id':'case','skill':'../SKILL.md','messages':[{'role':'user','content':'request'}],'criteria':[{'id':'meaning','meaning':'a meaningful explanation'}]}]}))
-        adapter=repo/'adapter.py';adapter.write_text("import json,sys\nr=json.load(sys.stdin)\nprint(json.dumps({'model':r['model'],'output':{'criteria':[{'id':'meaning','pass':True,'quote':'absent','reason':'unsupported'}]} if 'candidate_output' in r else 'actual answer'}))\n")
+        adapter=repo/'adapter.py';adapter.write_text("import json,sys\nr=json.load(sys.stdin)\nmode=r.get('settings',{}).get('mode')\nif mode=='adapter-error': raise SystemExit(7)\nif 'candidate_output' in r:\n print(json.dumps({'model':r['model'],'output':{'criteria':[{'id':'meaning','pass':mode!='semantic-fail','quote':'absent' if mode=='invalid-evidence' else 'actual answer','reason':'independent assessment'}]}}))\nelse: print(json.dumps({'model':r['model'],'output':'actual answer'}))\n")
         command=json.dumps(['python3',str(adapter)]);out=repo/'result.json'
-        result=self.call('python3',ROOT/'scripts/evaluate-skills.py','--fixtures',fixtures,'--model-command',command,'--judge-command',command,'--model','generator','--judge-model','judge','--output',out)
-        self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error');self.assertIn('evidence',record['error']);self.assertIn('judge_input',record);self.assertIn('judgment',record);self.assertEqual(record['judgment']['output']['criteria'][0]['quote'],'absent')
+        common=['python3',ROOT/'scripts/evaluate-skills.py','--fixtures',fixtures,'--model-command',command,'--judge-command',command,'--model','generator','--judge-model','judge','--output',out]
+        result=self.call(*common,'--settings',json.dumps({'mode':'semantic-fail'}))
+        self.assertEqual(result.returncode,0);report=json.loads(out.read_text());record=report['records'][0];self.assertEqual(report['schema'],2);self.assertEqual(record['status'],'recorded');self.assertFalse(record['judgment']['output']['criteria'][0]['pass'])
+        result=self.call(*common,'--settings',json.dumps({'mode':'invalid-evidence'}))
+        self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error');self.assertIn('evidence',record['error'])
+        result=self.call(*common,'--settings',json.dumps({'mode':'adapter-error'}))
+        self.assertEqual(result.returncode,1);record=json.loads(out.read_text())['records'][0];self.assertEqual(record['status'],'error');self.assertIn('adapter failed',record['error'])
     def test_state_rejects_symlink_ancestor_before_creating_files(self):
         state = ROOT/'plugins/playbooks/authoring/write-doc/scripts/state.py'
         if not state.exists():self.skipTest('no write-doc state')
