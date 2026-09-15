@@ -32,7 +32,6 @@ ENTRY_FILES_BY_CONTRACT = {
 DIRECT_INVOCATION_CONTRACTS = {"grill/grill", "write-doc/write-doc"}
 
 PROPERTY_REFERENCE = re.compile(r"^\$\{\s*(\.[A-Za-z0-9_.\[\]\"'-]+)\s*\}$")
-DYNAMIC_REFERENCE = re.compile(r"\$\{[^}]+\}")
 
 # ${.deps...} の解析はここ 1 箇所だけで行う。resolver も lint もこの関数を使う。
 # ドット形・ブラケット形・引用形を同じ segment 列へ正規化してから許可形と突き合わせる。
@@ -737,7 +736,8 @@ def classify_step_input(config: dict, step: dict, key: str) -> tuple[str, object
         # `${output_directory}` のような実行時値を静的literalとして扱うと、
         # input_resolved / explainが「解決済み」と誤表示する。自分のplaybook
         # propertyではないplaceholderを含む値は、実行担当がneedsから組み立てる動的値である。
-        if DYNAMIC_REFERENCE.search(raw):
+        placeholder_start = raw.find("${")
+        if placeholder_start >= 0 and raw.find("}", placeholder_start + 2) >= 0:
             return INPUT_UNRESOLVED, None
         return INPUT_RESOLVED, raw
     return INPUT_OUT_OF_SCOPE, raw
