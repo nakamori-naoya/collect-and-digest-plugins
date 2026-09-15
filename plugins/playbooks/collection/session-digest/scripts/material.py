@@ -176,7 +176,7 @@ def main():
     with os.fdopen(fd, "wb") as handle:
         handle.write(encoded)
     print(json.dumps({"decision": "written", "reason": "private material prepared",
-        "artifact": {"material": path, "material_path": path, "items": path, "target_date": args.date,
+        "artifact": {"material_path": path, "target_date": args.date,
                      "input_hash": input_hash, "session_count": len(root_ids)},
         "counts": {"items": len(records)}}, ensure_ascii=False))
 

@@ -192,7 +192,7 @@ validate_session_digest_material_fixture() {
   local material="$fixture/private/session-material-fixture.json"
   local output="$fixture/final.md"
   local index="$fixture/index.jsonl"
-  local status=0 out
+  local status=0 out generated_material
   mkdir -p "$fixture/private" "$fixture/non-git"
   fixture=$(cd "$fixture" && pwd -P)
   material="$fixture/private/session-material-fixture.json"
@@ -232,7 +232,72 @@ validate_session_digest_material_fixture() {
   printf '%s\n' '{"schema":1,"source":"fixture","source_id":"root","activity_dates":["2026-09-02"],"relation":"root","parent_source_id":null,"state":"quiescent","provisional":false,"source_ref":{"path":"'"$fixture/source.jsonl"'","fingerprint":"fixture"},"observed_at":"2026-09-02T00:00:00Z","collector":"fixture"}' > "$fixture/day-index.jsonl"
   printf '%s\n' '{}' > "$fixture/source.jsonl"
   (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02 --out-dir "$fixture/generated") > "$fixture/generated.json" || status=1
-  jq -e '.decision=="written" and (.artifact.material_path|startswith("'"$fixture"'"))' "$fixture/generated.json" >/dev/null || status=1
+  jq -e '.decision=="written" and
+    (.artifact|keys|sort)==["input_hash","material_path","session_count","target_date"] and
+    (.artifact.material_path|startswith("'"$fixture"'")) and
+    .artifact.target_date=="2026-09-02" and .artifact.session_count==1 and
+    .counts.items==1' "$fixture/generated.json" >/dev/null || status=1
+  generated_material=$(jq -r '.artifact.material_path' "$fixture/generated.json")
+  [ -f "$generated_material" ] \
+    && python3 -c 'import os, stat, sys; raise SystemExit(0 if stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o600 else 1)' "$generated_material" \
+    || status=1
+
+  # 代表入力からwrite-doc v2のtyped materialへ、唯一のproducer値を直接接続できる。
+  mkdir -p "$fixture/output"
+  jq -n --slurpfile generated "$fixture/generated.json" \
+    --arg output_directory "$fixture/output" \
+    '{material:[{kind:"file",path:$generated[0].artifact.material_path}],
+      document_type:"period-digest",output_directory:$output_directory,
+      name:($generated[0].artifact.target_date+".md")}
+    | select(.material==[{kind:"file",path:$generated[0].artifact.material_path}] and
+        .document_type=="period-digest" and (.output_directory|type=="string") and
+        .name=="2026-09-02.md" and (has("update_target")|not))' >/dev/null || status=1
+
+  # 対象日に0件ならmaterialも空の最終資料も作らない。
+  if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-03 --out-dir "$fixture/empty") >/dev/null 2>&1; then
+    status=1
+  fi
+  [ ! -e "$fixture/empty" ] || status=1
+
+  # provisionalは完成済み素材ではないため、documentへ進まず停止する。
+  jq -c '.provisional=true' "$fixture/day-index.jsonl" > "$fixture/provisional-index.jsonl"
+  if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/provisional-index.jsonl" --date 2026-09-02 --out-dir "$fixture/provisional") >/dev/null 2>&1; then
+    status=1
+  fi
+  [ ! -e "$fixture/provisional" ] || status=1
+  return "$status"
+}
+
+validate_session_digest_contract_schema() {
+  local root="$ROOT/plugins/playbooks/collection/session-digest"
+  local valid="$TMP_ROOT/session-digest-contract.json"
+  local invalid="$TMP_ROOT/session-digest-contract-invalid.json"
+  local status=0
+
+  yq -o=json -I=0 '.' "$root/playbook.yml" > "$valid" || return 1
+  bash "$root/scripts/validate-config.sh" "$valid" || status=1
+
+  # 固定長を意味品質gateとして復活させても、宣言済みschemaには入れられない。
+  jq '.output.max_chars_per_session=400' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+
+  # 保存名は文言ではなくcontractの必須fieldとして検査する。
+  jq 'del(.contract.output_name)' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+
+  # material_pathだけがwrite-docへ渡すfile素材のproducerである。欠落、旧items、
+  # 両方を混在させた形は、どれも同じ公開入力を二通りに解釈できるため拒否する。
+  jq '(.steps[] | select(.id=="document") | .needs) -= ["material_path"]' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+  jq '(.steps[] | select(.id=="document") | .needs) |= map(if .=="material_path" then "items" else . end)' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+  jq '(.steps[] | select(.id=="document") | .needs) += ["items"]' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+
+  # 既定は新規保存なので、更新先を同時に要求する混在形を拒否する。
+  jq '(.steps[] | select(.id=="document") | .needs) += ["update_target"]' "$valid" > "$invalid"
+  if bash "$root/scripts/validate-config.sh" "$invalid" >/dev/null 2>&1; then status=1; fi
+
   return "$status"
 }
 # ── 消費側の依存契約 ───────────────────────────────────────────
@@ -514,24 +579,21 @@ while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROO
 while IFS= read -r script; do PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 -m py_compile "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.py' | sort)
 validate_dependency_resolution_contract || failed=1
 validate_session_digest_material_fixture || failed=1
+validate_session_digest_contract_schema || failed=1
 session_digest="$ROOT/plugins/playbooks/collection/session-digest"
 if yq -o=json -I=0 '.' "$session_digest/playbook.yml" | jq -e '
     (.requires | any(.plugin=="write-doc" and .marketplace=="write-doc")) and
     (.requires | all(.marketplace=="write-doc" or .marketplace=="collect-and-digest")) and
     (.steps | any(.id=="document" and .playbook=="write-doc"
                   and .input.document_type=="${.contract.document_type}"
+                  and .needs==["material_path","input_hash","target_date","session_count"]
                   and .provides==["status","path","reason"])) and
-    (.steps | any(.id=="material" and (.provides | index("material_path")))) and
+    (.steps | any(.id=="material" and .provides==["material_path","input_hash","target_date","session_count"])) and
+    ((.output | has("max_chars_per_session")) | not) and
     (.steps[-1].id=="cleanup" and .steps[-1].script=="scripts/material.py" and .steps[-1].provides==["cleanup_report"]) and
     (.steps[-1].needs | sort==["index","material_path","path"]) and
     ([.steps[].id] == ["collect","material","document","cleanup"])' >/dev/null \
-  && [ ! -e "$session_digest/scripts/store.py" ] \
-  && rg -F '最終Markdownの保存は`write-doc`だけが行う' "$session_digest/references/output.md" >/dev/null \
-  && ! rg -n '\$\{\.deps\.write-doc\.(root|entry)\}|^[[:space:]]*contract: write-doc/write-doc|^[[:space:]]*version: 1' \
-       "$session_digest/SKILL.md" "$ROOT/plugins/playbooks/collection/digest/skills/make-digest/SKILL.md" >/dev/null \
-  && rg -F -- '--out-dir ~/.local/state/harness-plugins/session-digest/material' "$session_digest/SKILL.md" >/dev/null \
-  && rg -F -- 'material.py" --cleanup' "$session_digest/SKILL.md" >/dev/null \
-  && rg -F '出力JSON全体を`cleanup_report`として扱う。cleanupはmaterial file 1件だけをunlinkし、0700の実行専用directoryは残す。' "$session_digest/SKILL.md" "$session_digest/references/output.md" >/dev/null; then
+  && [ ! -e "$session_digest/scripts/store.py" ]; then
   :
 else
   failed=1
