@@ -161,6 +161,36 @@ class CollectionIntegrity(unittest.TestCase):
         with patch.object(store.subprocess, 'run', return_value=allowed):
             slack.guard_dir(str(self.root))
 
+    # 正本: digest READMEの「完全な設定」例と公開playbook固有validator。
+    # 入力: READMEの「設定」直後にある最初のyaml code block。
+    # 正規化: code blockをUTF-8のYAMLとしてyqでJSONへ変換する。
+    # 合格述語: 掲載例をvalidate-config.shが受理する。
+    # 診断: validatorの既存schema診断をそのまま返す。
+    # 正例: inputsと4工程を持つ掲載例。反例: inputsとinterpret-requestを除いた旧3工程例。
+    # 境界例: digest定義が空でも構造上は合法。意味評価: 説明と利用目的の妥当性は本文を読む。
+    def test_digest_readme_complete_example_matches_validator(self):
+        """README掲載例そのものを正本validatorへ渡し、古い工程例への退行も拒否する。"""
+        readme = (ROOT / 'plugins/playbooks/collection/digest/README.md').read_text()
+        settings = readme.split('\n## 設定\n', 1)[1]
+        configuration = settings.split('```yaml', 1)[1].split('```', 1)[0]
+        parsed = subprocess.run(
+            ['yq', '-o=json', '.'], input=configuration, text=True, capture_output=True, check=True
+        )
+        example = self.root / 'digest-readme-example.json'
+        example.write_text(parsed.stdout)
+        validator = ROOT / 'plugins/playbooks/collection/digest/scripts/validate-config.sh'
+        accepted = subprocess.run(['bash', str(validator), str(example)], text=True, capture_output=True)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+
+        legacy = json.loads(parsed.stdout)
+        legacy.pop('inputs')
+        legacy['steps'] = legacy['steps'][1:]
+        rejected = self.root / 'digest-readme-legacy.json'
+        rejected.write_text(json.dumps(legacy))
+        result = subprocess.run(['bash', str(validator), str(rejected)], text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('schema', result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

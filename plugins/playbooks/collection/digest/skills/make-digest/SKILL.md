@@ -1,6 +1,6 @@
 ---
 name: make-digest
-description: 複数directoryの収集物から日次・週次・月次の資料を1本作る。期間で素材を選び、設定の追加promptを渡し、型を3種（期間ダイジェスト／決定ログ／論点台帳）に絞って資料化させる。「日次まとめを作って」「今週の議事録をダイジェストにして」「月次の決定ログを作って」と言われたときに使う。
+description: 複数directoryの収集物から日次・週次・月次の期間ダイジェストを1本作る。期間で素材を選び、設定の追加promptを渡して資料化させる。「日次まとめを作って」「今週の議事録をダイジェストにして」「月次まとめを作って」と言われたときに使う。
 ---
 
 # make-digest
@@ -9,54 +9,29 @@ description: 複数directoryの収集物から日次・週次・月次の資料�
 
 議事録は「いつ何を話したか」の順に並んでいる。読み手が要るのは「いま何が未決か」「何が決まったか」で並んだものである。**時間順から状態順への並べ替えが、このスキルの本体である。**
 
-## 0. プラグイン root を決める
+## 1. 実行契約を受け取り、書かれた順に進める
 
-<!-- BEGIN shared:skill-entry/root-block -->
-```bash
-BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
-if [ -d "${BUNDLE_ROOT}/playbooks/collection/digest" ]; then
-  PLUGIN_ROOT="${BUNDLE_ROOT}/playbooks/collection/digest"
-else
-  PLUGIN_ROOT="${BUNDLE_ROOT}"
-fi
-```
+このSKILLを実行する同じagentが、2階層上の`../../playbook.yml`と本文から参照する資料を全文読み、利用者の入力と明示された資料を保持した一つの文脈で最後まで判断する。本文の`${.playbook...}`と`${.instructions...}`は、agentが`../../playbook.yml`から読んだ値を指し、外部runtimeから注入される値ではない。認知工程を別skillへrelayせず、`skill:`工程の責務と参照資料をこのagent自身が適用する。決定論的な`script:`工程は公開playbook directoryの実在するtoolへ明示した入力pathを渡し、stdoutまたは指定した出力pathから結果を受け取る。`playbook:`工程だけは依存先の公開Skillを名前で呼び、その公開入力と公開結果だけを使う。設定生成、scope、依存先rootの探索、一時設定の寿命管理は行わない。必要な入力、宣言値、tool結果、公開Skill結果が無ければ推測せず停止する。
 
-`PLUGIN_ROOT`は配布物rootの絶対パスである。単一skill pluginではこの`SKILL.md`があるdirectory、複数skill pluginでは`skills/<skill>/`の2つ上に当たる。Claude Codeでは`${CLAUDE_PLUGIN_ROOT}`が自動展開される。
-<!-- END shared:skill-entry/root-block -->
+同じagentが`../../playbook.yml`の`instructions.execution.directive`、`sources`、`digests`、`requires`を直接読む。外部依存は`requires`の`{plugin, marketplace}`と利用可能な公開Skill名を照合し、別runtimeの依存解決objectを前提にしない。素材選択toolへ期間とsource directoryを明示し、その直接結果を使う。失敗結果を受けたら先へ進まない。
 
-## 1. 工程を解決して、書かれた順に実行する
-
-<!-- BEGIN shared:skill-entry/config-load -->
-```bash
-CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-```
-
-**このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
-
-本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
-<!-- END shared:skill-entry/config-load -->
-
-`${.instructions.execution.directive}` に従い、`${.playbook.sources}`、`${.playbook.digests}`、`${.deps}` を工程へ渡す。
-
-**各工程を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。渡さなければ効かない。入れ子の段取りへは、受け取ったものをそのまま渡す（自分の名前で作り直さない）。
-
-**exit 2 で止まったら先へ進まない。** 何が起きたかは `scripts/resolve.sh` の冒頭に書いてある。
+`steps`配列が工程順序の正本である。最初の`interpret-request`は`agent_work: invoking_agent`として、このSKILLを実行している同じagentが利用者の依頼を`digests`の宣言へ照合し、`digest_name`と`reference_time`を確定する。その2値を明示してから`material`の決定論的toolを呼び、配列順を自由に入れ替えない。
 
 ## 2. 素材の扱いを守る
 
 素材が0件なら、**書かずに終わる**。「その期間に素材が無い」と報告する。
 **「置き場が無い」と「その期間に素材が無い」は別のことである。** 詳しくは[素材の扱い](references/sourcing.md)。
 
-## 3. 作れる型は3種だけ
+## 3. 作れる型は1種だけ
 
 `period-digest` だけ。**これ以外は作れない。**
 使い分けと、型を固定して渡す理由は[作れる型](references/types.md)。
 
-制限は設定の解決時に機械が検査する。**この文章を読み飛ばしても、設定が外れていれば止まる。**
+型の制限は`playbook.yml`の機械可読な`digests`宣言と素材選択toolの出力schemaを照合する。説明文の語句では判定しない。
 
 ## 4. write-docへ資料化を委譲する
 
-書くのはこのskillではない。`document`工程で契約ID `write-doc/write-doc` の公開playbookへ、次の入力objectを直接渡す。入力YAML、解決済みYAML、依存先の`prepare.sh`、結果受取用ファイルは作らない。
+書くのはこのskillではない。`document`工程で公開Skill `write-doc:write-doc`へ、次の入力objectを直接渡す。中間ファイルや依存先の実行状態は作らない。
 
 - `material`: 選択した各素材を`{kind: file, path: <絶対path>}`にし、静的情報の骨格を`{kind: text, content: <本文>}`として加えたobject配列。追加promptが空でなければ、同じく`kind: text`の要素として加える
 - `document_type`: 素材選択が返した`period-digest`
@@ -76,5 +51,3 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 - 付いたラベル（後で束ねるときの手がかりになる）
 
 後から束ねる方法と工程上書きの形式は[README](../../README.md)を参照する。`steps` を書いた場合は丸ごと差し替わる。
-
-設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。
