@@ -358,7 +358,9 @@ class Hardening(unittest.TestCase):
             (root/'scripts/prepare.sh').chmod(0o755)
 
     def _provider(self, name, package_name, marketplace, contract, internal, implements=True,
-                  types=None, decoy=False):
+                  types=None, decoy=False, contract_version=None):
+        if contract_version is None:
+            contract_version = 2 if contract == 'write-doc/write-doc' else 1
         package = self.base/name/'plugins'
         entry = package/'playbooks/pb'
         self._skill(entry, 'entry-skill')
@@ -373,7 +375,8 @@ class Hardening(unittest.TestCase):
         self._manifest(component, {'name': internal, 'version': '1.0.0'})
         harness = {'installationSurface': 'playbook-package', 'marketplace': marketplace,
                    'entryRoot': './playbooks/pb', 'playbooks': {'pb': './playbooks/pb'},
-                   'internalPlugins': {internal: './skills/internal'}, 'contractVersion': 1}
+                   'internalPlugins': {internal: './skills/internal'},
+                   'contractVersion': contract_version}
         if decoy:
             # entryRoot は契約と別の playbook を指す。契約が選んだ入口が勝たねばならない。
             decoy_root = package/'playbooks/decoy'
@@ -387,7 +390,8 @@ class Hardening(unittest.TestCase):
             harness['entryRoot'] = './playbooks/decoy'
             harness['playbooks']['decoy'] = './playbooks/decoy'
         if implements:
-            declaration = {'id': contract, 'version': 1, 'kind': 'playbook', 'playbook': 'pb'}
+            declaration = {'id': contract, 'version': contract_version,
+                           'kind': 'playbook', 'playbook': 'pb'}
             if types is not None:
                 declaration['types'] = types
             harness['implements'] = [declaration]
@@ -395,8 +399,38 @@ class Hardening(unittest.TestCase):
                                  'skills': ['./playbooks/pb'], 'metadata': {'harness': harness}})
         return package
 
-    def _consumer(self, steps, requires):
-        package = self.base/'consumer/plugins'
+    def _direct_provider(self, name='direct-provider', contract='write-doc/write-doc',
+                         contract_version=2, plugin='write-doc', marketplace='write-doc'):
+        """直接呼び出す公開入口。旧runtime scriptを持たない。"""
+        package = self.base/name/'plugins'
+        entry = package/f'playbooks/{plugin}'
+        self._skill(entry, plugin)
+        (entry/'playbook.yml').write_text(
+            f'version: 2\nname: {plugin}\ndescription: fixture\n'
+            'instructions: {execution: {directive: fixture}}\nrequires: []\n'
+            'steps: [{id: author, skill: author-document, purpose: fixture}]\n')
+        harness = {
+            'installationSurface': 'playbook-package',
+            'marketplace': marketplace,
+            'entryRoot': f'./playbooks/{plugin}',
+            'playbooks': {plugin: f'./playbooks/{plugin}'},
+            'internalPlugins': {},
+            'contractVersion': contract_version,
+            'implements': [{
+                'id': contract, 'version': contract_version,
+                'kind': 'playbook', 'playbook': plugin,
+            }],
+        }
+        if contract == 'write-doc/write-doc':
+            harness['implements'][0]['types'] = ['north-star']
+        self._manifest(package, {
+            'name': plugin, 'version': '7.0.0',
+            'skills': [f'./playbooks/{plugin}'], 'metadata': {'harness': harness},
+        })
+        return package
+
+    def _consumer(self, steps, requires, name='consumer'):
+        package = self.base/name/'plugins'
         entry = package/'playbooks/demo'
         self._skill(entry, 'demo')
         self._entry_scripts(entry)
@@ -435,6 +469,88 @@ class Hardening(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload['dependency_scope'], 'internal')
         self.assertEqual(payload['source_kind'], 'repository')
+
+    def test_contract_v2_direct_provider_needs_no_legacy_runtime_scripts(self):
+        """v2はSKILL.mdとplaybook.ymlだけで解決し、v1の必須script境界は維持する。"""
+        if not (ROOT/'shared/playbook/resolve.sh').exists(): self.skipTest('no playbook resolver')
+        provider = self._direct_provider()
+        devmap = self._devmap({'write-doc/write-doc': provider})
+        entry = self._consumer(
+            '  - {id: document, playbook: write-doc, purpose: fixture,\n'
+            '     input: {document_type: north-star}, provides: [status, path, reason]}\n',
+            [('local-tool', 'demo'), ('write-doc', 'write-doc')], name='consumer-write')
+        environment = dict(self.env, HARNESS_PLUGIN_DEV_ROOTS=str(devmap),
+                           XDG_CONFIG_HOME=str(self.base/'config'))
+        accepted = subprocess.run(
+            ['bash', str(entry/'scripts/resolve.sh'), str(self.base/'consumer-write')],
+            text=True, capture_output=True, env=environment, timeout=60)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertIn('contract_version: 2', accepted.stdout)
+        self.assertIn('entry: ' + str(provider/'playbooks/write-doc/SKILL.md'), accepted.stdout)
+
+        # 契約v1でも直接呼び出しを宣言したgrillは旧runtime scriptを要求しない。
+        grill = self._direct_provider(
+            name='direct-grill', contract='grill/grill', contract_version=1,
+            plugin='grill', marketplace='grill')
+        self._devmap({'grill/grill': grill})
+        grill_entry = self._consumer(
+            '  - {id: settle, playbook: grill, purpose: fixture, '
+            'provides: [decisions, open_questions]}\n',
+            [('local-tool', 'demo'), ('grill', 'grill')], name='consumer-grill')
+        grill_accepted = subprocess.run(
+            ['bash', str(grill_entry/'scripts/resolve.sh'), str(self.base/'consumer-grill')],
+            text=True, capture_output=True, env=environment, timeout=60)
+        self.assertEqual(grill_accepted.returncode, 0, grill_accepted.stderr)
+        self.assertIn('entry: ' + str(grill/'playbooks/grill/SKILL.md'), grill_accepted.stdout)
+        # 旧版のwrite-doc実装へは後方互換で倒さない。
+        old_write_doc = self._provider(
+            'old-write-doc', 'write-doc', 'write-doc', 'write-doc/write-doc',
+            'content-types', contract_version=1)
+        self._devmap({'write-doc/write-doc': old_write_doc})
+        old_rejected = subprocess.run(
+            ['bash', str(entry/'scripts/resolve.sh'), str(self.base/'consumer-write')],
+            text=True, capture_output=True, env=environment, timeout=60)
+        self.assertEqual(old_rejected.returncode, 2)
+        self.assertIn('external-dependency-no-playbook', old_rejected.stderr)
+        self._devmap({'write-doc/write-doc': provider})
+
+        # 反例: v2でも公開入口そのものは必須。
+        skill = provider/'playbooks/write-doc/SKILL.md'
+        original = skill.read_text()
+        skill.unlink()
+        rejected = subprocess.run(
+            ['bash', str(entry/'scripts/resolve.sh'), str(self.base/'consumer-write')],
+            text=True, capture_output=True, env=environment, timeout=60)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn('implements-entry-missing', rejected.stderr)
+        skill.write_text(original)
+
+        # 境界例: v1 providerから旧runtime scriptを省くことはできない。
+        legacy = self._provider('legacy-provider', 'legacy-doc', 'legacy-docs',
+                                'legacy-docs/legacy-doc', 'legacy-worker', contract_version=1)
+        (legacy/'playbooks/pb/scripts/prepare.sh').unlink()
+        resolver = entry/'scripts/resolve-dependency.py'
+        legacy_check = subprocess.run(
+            ['python3', str(resolver), '--plugin-root', str(entry),
+             '--plugin', 'legacy-doc', '--marketplace', 'legacy-docs'],
+            text=True, capture_output=True,
+            env=dict(environment, HARNESS_PLUGIN_DEV_ROOTS=str(
+                self._devmap({'legacy-docs/legacy-doc': legacy}))), timeout=60)
+        self.assertEqual(legacy_check.returncode, 2)
+        self.assertIn('implements-entry-missing', legacy_check.stderr)
+
+        # 契約版とimplements版が食い違う宣言は受け付けない。
+        manifest = provider/'.codex-plugin/plugin.json'
+        data = json.loads(manifest.read_text())
+        data['metadata']['harness']['implements'][0]['version'] = 1
+        manifest.write_text(json.dumps(data))
+        self._devmap({'write-doc/write-doc': provider})
+        mismatch = subprocess.run(
+            ['python3', str(resolver), '--plugin-root', str(entry),
+             '--plugin', 'write-doc', '--marketplace', 'write-doc'],
+            text=True, capture_output=True, env=environment, timeout=60)
+        self.assertEqual(mismatch.returncode, 2)
+        self.assertIn('implements-version-invalid', mismatch.stderr)
 
     def test_internal_search_works_when_plugin_name_differs_from_marketplace(self):
         """stub-docs/stub-write-doc のように実体名 ≠ marketplace 名でも内部探索が働く。"""
@@ -589,8 +705,9 @@ class Hardening(unittest.TestCase):
     def test_contract_input_normalizes_paths_and_delegates_schema(self):
         """--input は symlink 越しの一時領域を受け、契約固有schemaは validate-input.sh へ委譲する。"""
         if not (ROOT/'shared/playbook/resolve.sh').exists(): self.skipTest('no playbook resolver')
-        package = self._provider('provider', 'write-doc', 'write-doc', 'write-doc/write-doc',
-                                 'content-types', types=['north-star'])
+        package = self._provider('provider', 'legacy-doc', 'legacy-docs',
+                                 'legacy-docs/legacy-doc', 'content-types',
+                                 types=['north-star'], contract_version=1)
         entry = package/'playbooks/pb'
         self._entry_scripts(entry, resolver=True)
         # macOS 既定の TMPDIR と同じ形（祖先が symlink）を作る。
@@ -598,7 +715,7 @@ class Hardening(unittest.TestCase):
         linked = self.base/'tmp'; linked.symlink_to(real, target_is_directory=True)
         output = real/'out.yml'
         payload = linked/'input.yml'
-        payload.write_text('contract: write-doc/write-doc\nversion: 1\n'
+        payload.write_text('contract: legacy-docs/legacy-doc\nversion: 1\n'
                            'document_type: north-star\n'
                            f'output_to: {linked}/out.yml\n')
         environment = dict(self.env, XDG_CONFIG_HOME=str(self.base/'config'))
@@ -631,7 +748,7 @@ class Hardening(unittest.TestCase):
         self.assertEqual(resolve().returncode, 0)
         validator.unlink()
         # 正規化しても能力検査は効く。
-        payload.write_text('contract: write-doc/write-doc\nversion: 1\ndocument_type: strategy\n')
+        payload.write_text('contract: legacy-docs/legacy-doc\nversion: 1\ndocument_type: strategy\n')
         self.assertIn('[error:input-capability-unsupported]', resolve().stderr)
         # 実在しない入力は正規化後に落ちる。
         payload.unlink()
