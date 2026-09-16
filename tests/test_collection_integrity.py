@@ -19,8 +19,8 @@ def load(name, relative):
     spec.loader.exec_module(module)
     return module
 
-slack = load('slack', 'plugins/skills/collection/slack-collect/scripts/message.py')
-meeting = load('meeting', 'plugins/skills/collection/meeting-collect/scripts/note.py')
+slack = load('slack', 'plugins/collect-and-digest/skills/collect-slack/scripts/message.py')
+meeting = load('meeting', 'plugins/collect-and-digest/skills/collect-notes/scripts/note.py')
 store = slack.collection_store
 
 
@@ -162,35 +162,62 @@ class CollectionIntegrity(unittest.TestCase):
             slack.guard_dir(str(self.root))
 
     # 正本: digest READMEの「完全な設定」例と公開playbook固有validator。
-    # 入力: READMEの「設定」直後にある最初のyaml code block。
-    # 正規化: code blockをUTF-8のYAMLとしてyqでJSONへ変換する。
-    # 合格述語: 掲載例をvalidate-config.shが受理する。
-    # 診断: validatorの既存schema診断をそのまま返す。
-    # 正例: inputsと4工程を持つ掲載例。反例: inputsとinterpret-requestを除いた旧3工程例。
-    # 境界例: digest定義が空でも構造上は合法。意味評価: 説明と利用目的の妥当性は本文を読む。
-    def test_digest_readme_complete_example_matches_validator(self):
-        """README掲載例そのものを正本validatorへ渡し、古い工程例への退行も拒否する。"""
-        readme = (ROOT / 'plugins/playbooks/collection/digest/README.md').read_text()
-        settings = readme.split('\n## 設定\n', 1)[1]
-        configuration = settings.split('```yaml', 1)[1].split('```', 1)[0]
-        parsed = subprocess.run(
-            ['yq', '-o=json', '.'], input=configuration, text=True, capture_output=True, check=True
-        )
-        example = self.root / 'digest-readme-example.json'
-        example.write_text(parsed.stdout)
-        validator = ROOT / 'plugins/playbooks/collection/digest/scripts/validate-config.sh'
-        accepted = subprocess.run(['bash', str(validator), str(example)], text=True, capture_output=True)
-        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+    # 正本: 各入口の assets/*.config.example.yml と scripts の validate_config。
+    # 入力: 記入例YAMLをyqでJSONへ変換したもの。合格述語: 記入例を各scriptのvalidate_configが受理する。
+    # 反例: keyの追加・欠落・型違い・許容外の値を拒否する。境界例: digestの空sourcesは構造上合法（material.py listで停止）。
+    # 意味評価: 設定値が利用者の収集目的に合うかは本文を読む。
+    def test_config_examples_match_schema_and_reject_mutations(self):
+        digest = load('digest', 'plugins/collect-and-digest/skills/digest/scripts/material.py')
+        sessions = load('sessions', 'plugins/collect-and-digest/skills/collect-sessions/scripts/session.py')
+        cases = [
+            (slack, 'plugins/collect-and-digest/skills/collect-slack/assets/collect-slack.config.example.yml',
+             [lambda c: c.__setitem__('extra', 1), lambda c: c['collect'].pop('max_bytes'),
+              lambda c: c.__setitem__('instructions', {'collection': {'directive': 'x'}}),
+              lambda c: c['collect']['targets'].__setitem__('direct_mentions', 'yes'),
+              lambda c: (c['collect'].__setitem__('channels', 'all'), c['collect']['targets'].__setitem__('channel_messages', True)),
+              lambda c: c['collect'].__setitem__('channels', []),
+              lambda c: (c['collect']['targets'].__setitem__('group_mentions', True), c['collect'].__setitem__('groups', []))]),
+            (meeting, 'plugins/collect-and-digest/skills/collect-notes/assets/collect-notes.config.example.yml',
+             [lambda c: c.__setitem__('extra', 1), lambda c: c['collect'].pop('transcript'),
+              lambda c: c['collect']['sources'].__setitem__('slack', {'enabled': True}),
+              lambda c: c.__setitem__('timezone', 'Mars/Olympus')]),
+            (sessions, 'plugins/collect-and-digest/skills/collect-sessions/assets/collect-sessions.config.example.yml',
+             [lambda c: c.__setitem__('extra', 1), lambda c: c['collection'].pop('max_scan_files'),
+              lambda c: (c['sources']['claude_code'].__setitem__('enabled', False), c['sources']['codex'].__setitem__('enabled', False)),
+              lambda c: c['collection'].__setitem__('max_scan_files', 0)]),
+            (digest, 'plugins/collect-and-digest/skills/digest/assets/digest.config.example.yml',
+             [lambda c: c.__setitem__('steps', []), lambda c: c['digests'][0].__setitem__('type', 'tutorial'),
+              lambda c: c['output'].__setitem__('format', 'html'), lambda c: c['digests'].append(dict(c['digests'][0]))]),
+        ]
+        for module, relative, mutations in cases:
+            parsed = subprocess.run(['yq', '-o=json', '.', str(ROOT / relative)], text=True, capture_output=True, check=True)
+            example = json.loads(parsed.stdout)
+            module.validate_config(json.loads(json.dumps(example)), relative)
+            for mutate in mutations:
+                broken = json.loads(json.dumps(example))
+                mutate(broken)
+                with self.assertRaises(SystemExit, msg=f'{relative}: {mutate}'):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        module.validate_config(broken, relative)
+        empty_sources = json.loads(subprocess.run(['yq', '-o=json', '.', str(ROOT / cases[3][1])], text=True, capture_output=True, check=True).stdout)
+        empty_sources['sources'] = []
+        digest.validate_config(empty_sources, 'boundary')
 
-        legacy = json.loads(parsed.stdout)
-        legacy.pop('inputs')
-        legacy['steps'] = legacy['steps'][1:]
-        rejected = self.root / 'digest-readme-legacy.json'
-        rejected.write_text(json.dumps(legacy))
-        result = subprocess.run(['bash', str(validator), str(rejected)], text=True, capture_output=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('schema', result.stderr)
-
+    # 正本: 1層の設定fileの置き場規則。入力: <repo>/.harness-plugins/<entry>.config.yml。
+    # 合格述語: 相対 slack_dir / notes_dir がrepository root（設定fileの2つ上）基準の絶対pathへ解決される。
+    def test_relative_dirs_resolve_against_repository_root(self):
+        repo = self.root / 'repo'
+        (repo / '.harness-plugins').mkdir(parents=True)
+        for module, name, key in ((slack, 'collect-slack', 'slack_dir'), (meeting, 'collect-notes', 'notes_dir')):
+            source = ROOT / f'plugins/collect-and-digest/skills/{name}/assets/{name}.config.example.yml'
+            target = repo / '.harness-plugins' / f'{name}.config.yml'
+            target.write_text(source.read_text().replace(f'{key}: ~/meeting-notes', f'{key}: notes'))
+            cfg = module.load_config(str(target))
+            self.assertTrue(Path(cfg[key]).is_absolute())
+            self.assertEqual(Path(cfg[key]).parent, repo.resolve())
+            self.assertEqual(cfg['repo_root'], str(repo.resolve()))
+        self.assertEqual([op['id'] for op in slack.load_config(str(repo / '.harness-plugins/collect-slack.config.yml'))['collection_plan']['operations']][:2],
+                         ['compute-target-range', 'resolve-authenticated-user'])
 
 if __name__ == '__main__':
     unittest.main()

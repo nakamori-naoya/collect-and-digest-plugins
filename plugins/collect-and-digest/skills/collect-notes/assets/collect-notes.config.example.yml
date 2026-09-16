@@ -1,0 +1,13 @@
+# collect-notes の設定の記入例。<repo>/.harness-plugins/collect-notes.config.yml へ全keyを書いて置く。
+# 同梱既定へのfallbackは無く、この例が既定値として読まれることもない。
+# notes_dir/timezone: 保存先と対象日の判定timezone。
+# collect.sources: 収集元の有効/無効。transcript: 原文を含めるか。max_bytes: 1件の上限。
+version: 1
+notes_dir: ~/meeting-notes
+timezone: Asia/Tokyo
+collect:
+  sources:
+    notion: {enabled: true}
+    google_docs: {enabled: true}
+  transcript: true
+  max_bytes: 10485760

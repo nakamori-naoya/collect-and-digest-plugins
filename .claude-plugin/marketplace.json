@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "collect-and-digest",
-      "source": "./plugins",
+      "source": "./plugins/collect-and-digest",
       "description": "収集とdigest作成のPlaybookを一括提供する",
       "version": "4.0.0"
     }

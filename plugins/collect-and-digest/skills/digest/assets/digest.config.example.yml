@@ -1,0 +1,27 @@
+# digest のrepository設定の記入例。<repo>/.harness-plugins/digest.config.yml へ全keyを書いて置く。
+# 同梱既定へのfallbackは無く、この例が既定値として読まれることもない。
+# sources[].dir: 全digestが読む置き場。相対pathはrepository root基準。
+# output.dir: 完成資料の保存先。相対pathはrepository root基準。formatはmarkdown固定。
+# digests[]: name / period（daily / weekly / monthly）/ type（period-digestだけ）/ prompt（無ければ空文字）。
+#            labelsとinclude_parts（part:を持つ文字起こしを含めるか。既定false）とoutputは任意。
+version: 1
+sources:
+  - dir: notes
+  - dir: slack
+labels: []
+output:
+  dir: docs
+  format: markdown
+digests:
+  - name: daily
+    period: daily
+    type: period-digest
+    prompt: "今日から引き継ぐ未完了事項を先に出す"
+  - name: weekly
+    period: weekly
+    type: period-digest
+    prompt: "今週の決定と来週の行動を対にする"
+  - name: month
+    period: monthly
+    type: period-digest
+    prompt: "月をまたいで残る論点を明示する"
