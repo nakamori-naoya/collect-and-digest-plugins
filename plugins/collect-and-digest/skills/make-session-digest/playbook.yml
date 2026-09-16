@@ -9,6 +9,7 @@ requires:
   - {plugin: write-doc, marketplace: write-doc}
 
 # 保存先と日次記録の契約。material.py と document 工程が読む。
+# materialはmaterial.pyが標準出力へ返し、同じagentがインメモリで保持してwrite-docへkind:textで渡す。一時fileやcleanup工程は無い。
 output:
   dir: ~/agent-session-digests
   format: markdown
@@ -28,20 +29,14 @@ steps:
 
   - id: material
     script: scripts/material.py
-    purpose: 正本参照を非公開の一時materialへまとめる
+    purpose: 索引から対象日のセッションmaterialを組み立て、標準出力のJSONとして返す
     needs: [index, target_date, provisional]
-    provides: [material_path, input_hash, target_date, session_count]
+    provides: [material, input_hash, target_date, session_count]
 
   - id: document
     playbook: write-doc
-    purpose: 日次記録の契約とprivacy境界を追加指示として渡し、Markdownを書いて保存する
+    purpose: materialをkind:textの素材にし、日次記録の契約とprivacy境界を追加指示として渡してMarkdownを書いて保存する
     input:
       document_type: period-digest
-    needs: [material_path, input_hash, target_date, session_count]
+    needs: [material, input_hash, target_date, session_count]
     provides: [status, path, reason]
-
-  - id: cleanup
-    script: scripts/material.py
-    purpose: 最終資料の保存後、明示した今回のmaterialだけを安全に削除する
-    needs: [material_path, path, index]
-    provides: [cleanup_report]
