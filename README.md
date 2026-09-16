@@ -24,7 +24,7 @@
 | 複数の収集物から期間資料を作る（定義と素材数の照会も） | `digest` | `<repo>/.harness-plugins/digest.config.yml` |
 | session索引から日次の短い記録を作る | `make-session-digest` | 無し（入口の `playbook.yml` の `output` / `contract`） |
 
-設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。keyの一覧と型は各 `SKILL.md` の入力に、fileが無い・schemaに合わないときの停止は各scriptの診断にある。
+設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。keyの一覧と型は各 `SKILL.md` の入力にある。読み取りは各入口の `scripts/config.py check|read`（repository scopeは `--repo <repository配下のpath>`、`collect-sessions` は引数なし）だけが行い、pathはtoolが固定する。失敗は終了code 2と標準出力のJSON `reason`（`policy_missing` / `schema_violation` / `not_a_git_repository`）で分かる。`digest` と `make-session-digest` は任意入力 `references`（追加で従う資料の絶対path配列）を持ち、`write-doc` へそのまま渡す。
 
 collectorは要約しない。`digest`は収集元を変更しない。この分離により、収集漏れの確認と要約内容のレビューを別々に行える。
 

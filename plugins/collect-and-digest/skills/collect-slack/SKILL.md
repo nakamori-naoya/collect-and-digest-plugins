@@ -10,7 +10,7 @@ description: 設定timezone上の対象日（既定は今日）のSlackを集め
 ## 入力
 
 - 対象日: 利用者が `--date 2026-08-12` のように指定した日。指定が無ければ設定の `timezone` での当日。directoryのキーは対象日であって起動日ではない。
-- 設定file: `<repository root>/.harness-plugins/collect-slack.config.yml`。1層で必須、同梱既定へのfallbackは無い。keyは `version: 1`、`slack_dir`（相対ならrepository root基準）、`timezone`、`collect.channels`（`all` またはチャンネルの配列）、`collect.targets.{channel_messages, direct_mentions, group_mentions, authored_threads}`（boolean）、`collect.groups`（`id` を持つobjectの配列）、`collect.max_bytes`、`collect.credential_redaction`。記入例は [`assets/collect-slack.config.example.yml`](assets/collect-slack.config.example.yml)。fileが無い、keyが足りない・余る、型や値が許容範囲外なら `message.py` が診断を返して止まる。
+- 設定file: `<repository root>/.harness-plugins/collect-slack.config.yml`。1層で必須、同梱既定へのfallbackは無い。keyは `version: 1`、`slack_dir`（相対ならrepository root基準）、`timezone`、`collect.channels`（`all` またはチャンネルの配列）、`collect.targets.{channel_messages, direct_mentions, group_mentions, authored_threads}`（boolean）、`collect.groups`（`id` を持つobjectの配列）、`collect.max_bytes`、`collect.credential_redaction`。記入例は [`assets/collect-slack.config.example.yml`](assets/collect-slack.config.example.yml)。読み取りtoolの契約は手順1にある。
 
 ## 判断基準
 
@@ -21,7 +21,7 @@ description: 設定timezone上の対象日（既定は今日）のSlackを集め
 
 ## 手順
 
-1. **設定とMCP実行計画を読む。** `python3 scripts/message.py plan --config <設定file>` を実行する。入力は設定fileの絶対path、出力は `slack_dir`（絶対path）、`timezone`、`collection_plan` を持つ標準出力のJSON、終了codeは `0` = 計画を返した、`2` = 設定file不在または schema 違反（診断は標準出力のJSON `error`）。`2` なら止まる。
+1. **設定を読み、MCP実行計画を組む。** 設定の読み取りは `python3 scripts/config.py check --repo <repository配下のpath>` / `python3 scripts/config.py read --repo <同>` だけで行う。設定fileの置き場はtoolが `<repositoryのgit root>/.harness-plugins/collect-slack.config.yml` に固定する（1層、fallback無し。呼び手はpathを選ばない）。stdinは使わない。`check` はschema検査だけを行い、終了code `0` で標準出力に `{"status":"ok","config":"<絶対path>"}` を返す。`read` はschema検査後に終了code `0` で `{"config":"<絶対path>","values":{<設定fileのtop-level keyと値をそのまま>}}` を返す。失敗は終了code `2` で標準出力に `{"error":"<診断>","config":"<絶対path>","reason":<理由>}` を返し、理由は `policy_missing`（fileが無い）/ `schema_violation`（keyの過不足・型違い・許容外の値・読めないfile）/ `not_a_git_repository`（`--repo` がgit repositoryでない。このとき `config` は `null`）。`2` なら止まる。 続けて `python3 scripts/message.py plan --config <readが返したconfigの絶対path>` を実行する。出力は `slack_dir`（絶対path）、`timezone`、`collection_plan` を持つ標準出力のJSON、終了codeは `0` = 計画を返した、`2` = 引数の不備（診断は標準出力のJSON `error`）。以降の `message.py` の `--config` にも同じ絶対pathを渡す。
 2. **対象日を決める。** 指定が無ければ `timezone` の当日を使う。
 3. **計画を配列順に実行する。** `{target_date}`、`{target_start_ts}`、`{target_end_ts}` を対象日から確定し（`scripts/date-range.py --date <YYYY-MM-DD> --timezone <timezone>`。標準出力のJSONで開始・終了tsを返す）、本人解決の出力で `{authenticated_user_id}` を置換する。`inputs` は指定された出力を合流し、`foreach` はproducer付き参照の1件ごとに実行する。ツールと引数の意味は[対象別の収集方法](references/targets.md)に従う。
 4. **取る前に判定する。** `python3 scripts/message.py check --config <設定file> --operation-id <planのoperation.id> --bucket <planのbucket> --target-date <YYYY-MM-DD> --latest-ts <そのバケットの最新ts>` を実行する。出力は `decision` を持つ標準出力のJSON、終了codeは `0` = 判定した、`2` = 引数・設定・計画にないoperationの不備。
@@ -34,7 +34,7 @@ description: 設定timezone上の対象日（既定は今日）のSlackを集め
 
 止まるのは次の場合である。診断を報告し、保存済みと主張しない。
 
-- 設定fileが無い、または schema に合わない（`message.py plan` が `2`）。
+- `config.py` が `2` を返した（`policy_missing` / `schema_violation` / `not_a_git_repository`）。
 - `message.py check` / `append` が `2` を返した。そのバケットを保存済みとして扱わない。
 
 次は止まらず、記録して進む。

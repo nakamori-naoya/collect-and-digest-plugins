@@ -10,7 +10,7 @@ description: Notion / Google Docsの議事録のうち、設定timezone上の対
 ## 入力
 
 - 対象日: 利用者が `--date 2026-08-12` のように指定した日。指定が無ければ設定の `timezone` での当日。directoryのキーは対象日であって起動日ではない（0:30に前日分を回収しても前日のdirectoryへ入る）。
-- 設定file: `<repository root>/.harness-plugins/collect-notes.config.yml`。1層で必須、同梱既定へのfallbackは無い。keyは `version: 1`、`notes_dir`（相対ならrepository root基準。git管理下は拒否される）、`timezone`、`collect.sources.notion.enabled`、`collect.sources.google_docs.enabled`（任意で `drive_query`）、`collect.transcript`、`collect.max_bytes`。記入例は [`assets/collect-notes.config.example.yml`](assets/collect-notes.config.example.yml)。fileが無い、keyが足りない・余る、型や値が許容範囲外なら `note.py` が診断を返して止まる。
+- 設定file: `<repository root>/.harness-plugins/collect-notes.config.yml`。1層で必須、同梱既定へのfallbackは無い。keyは `version: 1`、`notes_dir`（相対ならrepository root基準。git管理下は拒否される）、`timezone`、`collect.sources.notion.enabled`、`collect.sources.google_docs.enabled`（任意で `drive_query`）、`collect.transcript`、`collect.max_bytes`。記入例は [`assets/collect-notes.config.example.yml`](assets/collect-notes.config.example.yml)。読み取りtoolの契約は手順1にある。
 
 ## 判断基準
 
@@ -21,7 +21,7 @@ description: Notion / Google Docsの議事録のうち、設定timezone上の対
 
 ## 手順
 
-1. **設定と保存先を確かめる。** `python3 scripts/note.py paths --config <設定file> --target-date <YYYY-MM-DD>` を実行する。入力は設定fileの絶対pathと対象日、出力は `notes_dir` と `date_dir` を持つ標準出力のJSON、終了codeは `0` = 設定を読めた、`2` = 設定file不在または schema 違反（診断は標準出力のJSON `error`）。`2` なら止まる。
+1. **設定を読み、保存先を確かめる。** 設定の読み取りは `python3 scripts/config.py check --repo <repository配下のpath>` / `python3 scripts/config.py read --repo <同>` だけで行う。設定fileの置き場はtoolが `<repositoryのgit root>/.harness-plugins/collect-notes.config.yml` に固定する（1層、fallback無し。呼び手はpathを選ばない）。stdinは使わない。`check` はschema検査だけを行い、終了code `0` で標準出力に `{"status":"ok","config":"<絶対path>"}` を返す。`read` はschema検査後に終了code `0` で `{"config":"<絶対path>","values":{<設定fileのtop-level keyと値をそのまま>}}` を返す。失敗は終了code `2` で標準出力に `{"error":"<診断>","config":"<絶対path>","reason":<理由>}` を返し、理由は `policy_missing`（fileが無い）/ `schema_violation`（keyの過不足・型違い・許容外の値・読めないfile）/ `not_a_git_repository`（`--repo` がgit repositoryでない。このとき `config` は `null`）。`2` なら止まる。 続けて `python3 scripts/note.py paths --config <readが返したconfigの絶対path> --target-date <YYYY-MM-DD>` を実行する。出力は `notes_dir` と `date_dir` を持つ標準出力のJSON、終了codeは `0` = 解決した、`2` = 引数の不備（診断は標準出力のJSON `error`）。以降の `note.py` の `--config` にも同じ絶対pathを渡す。
 2. **対象日を決める。** 指定が無ければ `timezone` の当日を使う。対象日の判定は[収集工程の詳細](references/workflow.md)に従う。
 3. **1件ずつ判定する。** `python3 scripts/note.py check --config <設定file> --source notion --source-id <ID> --source-updated-at <上流の更新時刻>` を実行する。出力は `decision` を持つ標準出力のJSON、終了codeは `0` = 判定した、`2` = 引数・設定の不備。
 4. **書く。** [収集工程の詳細](references/workflow.md)の `note.py write` へ原文Markdownの一時fileと取得したmetadataを渡す。scriptがfront matter、台帳、副文書（文字起こし）を書く。終了codeは `0` = 保存した、`2` = 不備または上限超過（診断は標準出力のJSON `error`）。`2` ならその1件を保存済みとして扱わない。
@@ -33,7 +33,7 @@ description: Notion / Google Docsの議事録のうち、設定timezone上の対
 
 止まるのは次の場合である。診断を報告し、保存済みと主張しない。
 
-- 設定fileが無い、または schema に合わない（`note.py` が `2`）。
+- `config.py` が `2` を返した（`policy_missing` / `schema_violation` / `not_a_git_repository`）。
 - `note.py write` が `2` を返した（上限超過を含む）。その1件を保存済みとして扱わない。
 
 次は止まらず、記録して進む。

@@ -10,7 +10,7 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 ## 入力
 
 - 対象日: 利用者の指定が無ければ設定の `timezone` での当日。対象日はセッション開始日ではなく、その日にtimestampを持つイベントが存在するかの検索条件である。
-- 設定file: `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml`。利用者ごとの1層で必須、同梱既定へのfallbackは無い。セッション置き場と索引はmachine固有なので、repositoryではなく利用者の設定に置く。keyは `version: 1`、`state_dir`（絶対path。`~` 展開可）、`timezone`、`sources.claude_code.{enabled, root}`、`sources.codex.{enabled, root}`、`collection.{include_subagents, max_scan_files, max_source_bytes, stable_read_retries, quiescent_after_minutes}`。記入例は [`assets/collect-sessions.config.example.yml`](assets/collect-sessions.config.example.yml)。fileが無い、keyが足りない・余る、型や値が許容範囲外、相対path、有効なsourceが無いなら `session.py` が診断を返して止まる。
+- 設定file: `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml`。利用者ごとの1層で必須、同梱既定へのfallbackは無い。セッション置き場と索引はmachine固有なので、repositoryではなく利用者の設定に置く。keyは `version: 1`、`state_dir`（絶対path。`~` 展開可）、`timezone`、`sources.claude_code.{enabled, root}`、`sources.codex.{enabled, root}`、`collection.{include_subagents, max_scan_files, max_source_bytes, stable_read_retries, quiescent_after_minutes}`。記入例は [`assets/collect-sessions.config.example.yml`](assets/collect-sessions.config.example.yml)。読み取りtoolの契約は手順2にある。相対pathや有効なsourceの不在は `session.py scan` が診断を返して止まる。
 
 ## 判断基準
 
@@ -21,14 +21,14 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 ## 手順
 
 1. **対象日を決める。** 指定が無ければ設定の `timezone` の当日。
-2. **走査する。** `python3 scripts/session.py scan --config <設定file> --date <YYYY-MM-DD>` を実行する。事前確認だけなら `--dry-run` を付ける。入力は設定fileの絶対pathと対象日、出力は `decision / reason / artifact / counts` の4キーを持つ標準出力のJSON、終了codeは `0` = 走査した、`2` = 設定file不在・schema違反・停止条件（診断は標準出力のJSON `error`）。`2` なら止まる。
+2. **設定を読み、走査する。** 設定の読み取りは `python3 scripts/config.py check` / `python3 scripts/config.py read` だけで行う。設定fileの置き場はtoolが `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml` に固定する（利用者scope、1層、fallback無し。`--repo` は持たない）。stdinは使わない。`check` はschema検査だけを行い、終了code `0` で標準出力に `{"status":"ok","config":"<絶対path>"}` を返す。`read` はschema検査後に終了code `0` で `{"config":"<絶対path>","values":{<設定fileのtop-level keyと値をそのまま>}}` を返す。失敗は終了code `2` で標準出力に `{"error":"<診断>","config":"<絶対path>","reason":<理由>}` を返し、理由は `policy_missing`（fileが無い）/ `schema_violation`（keyの過不足・型違い・許容外の値・読めないfile）。`2` なら止まる。 続けて `python3 scripts/session.py scan --config <readが返したconfigの絶対path> --date <YYYY-MM-DD>` を実行する。事前確認だけなら `--dry-run` を付ける。出力は `decision / reason / artifact / counts` の4キーを持つ標準出力のJSON、終了codeは `0` = 走査した、`2` = 相対path・有効なsourceの不在・停止条件（診断は標準出力のJSON `error`）。`2` なら止まる。
 3. **報告する。** 対象日、`counts`（discovered / written / updated / unchanged / skipped / unrecognized / provisional）、`artifact` の日次索引、`provisional` の有無を報告する。
 
 ## 停止条件
 
 止まるのは次の場合である。索引を更新したことにせず、診断または `reason` を報告する。
 
-- 設定fileが無い、schema に合わない、有効なsourceが無い。
+- `config.py` が `2` を返した（`policy_missing` / `schema_violation`）、または有効なsourceが無い。
 - `session.py scan` が `2` を返した（enabledなrootの欠落、中間のparse不能なJSONL、上限超過、索引破損、保存先の安全違反）。
 
 次は止まらず、記録して進む。
