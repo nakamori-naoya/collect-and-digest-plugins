@@ -219,5 +219,76 @@ class CollectionIntegrity(unittest.TestCase):
         self.assertEqual([op['id'] for op in slack.load_config(str(repo / '.harness-plugins/collect-slack.config.yml'))['collection_plan']['operations']][:2],
                          ['compute-target-range', 'resolve-authenticated-user'])
 
+    # 正本: lib/harness_config.py の契約と各入口の validate_config。
+    # 入力: `config.py check|read --repo <path>`（collect-sessions は引数なしで XDG_CONFIG_HOME）。stdinは使わない。
+    # 正規化: git rev-parse --show-toplevel で git root を解決し、<root>/.harness-plugins/<entry>.config.yml を yq でJSON化する。
+    # 合格述語: check は exit 0 と {"status":"ok","config":<絶対path>}、read は exit 0 と {"config","values"}（values は top-level key をそのまま）。
+    #   失敗は exit 2 と {"error","config","reason"} で、reason は policy_missing / schema_violation / not_a_git_repository のどれか。not_a_git_repository では config は null。
+    # 正例: 記入例を置いた git repository の sub directory から check / read。反例: file不在、top-level key の過不足、yq で読めない file、git repository でない --repo。
+    # 境界例: --repo は git root の sub directory でもよい。collect-sessions は --repo を受け付けず、XDG_CONFIG_HOME を固定位置とする。
+    # 意味評価: 設定値が収集目的に合うかは本文を読む。
+    def test_config_tool_contract(self):
+        def run(entry, *args, env=None):
+            script = ROOT / f'plugins/collect-and-digest/skills/{entry}/scripts/config.py'
+            merged = dict(**__import__('os').environ)
+            merged.update(env or {})
+            result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, env=merged)
+            return result.returncode, (json.loads(result.stdout) if result.stdout.strip() else None), result.stderr
+
+        repo = self.root / 'config-repo'
+        (repo / '.harness-plugins').mkdir(parents=True)
+        (repo / 'sub').mkdir()
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        for entry in ('collect-notes', 'collect-slack', 'digest'):
+            example = ROOT / f'plugins/collect-and-digest/skills/{entry}/assets/{entry}.config.example.yml'
+            (repo / '.harness-plugins' / f'{entry}.config.yml').write_text(example.read_text())
+            expected = str((repo / '.harness-plugins' / f'{entry}.config.yml').resolve())
+            code, out, _ = run(entry, 'check', '--repo', str(repo / 'sub'))
+            self.assertEqual((code, out), (0, {'status': 'ok', 'config': expected}), entry)
+            code, out, _ = run(entry, 'read', '--repo', str(repo))
+            self.assertEqual(code, 0, entry)
+            self.assertEqual(set(out), {'config', 'values'})
+            self.assertEqual(out['config'], expected)
+            self.assertEqual(out['values']['version'], 1)
+            self.assertEqual(set(out['values']), set(json.loads(subprocess.run(['yq', '-o=json', '.', str(example)], text=True, capture_output=True, check=True).stdout)))
+        nongit = self.root / 'not-a-repo'
+        nongit.mkdir()
+        code, out, _ = run('digest', 'check', '--repo', str(nongit))
+        self.assertEqual((code, out['reason'], out['config']), (2, 'not_a_git_repository', None))
+        (repo / '.harness-plugins/digest.config.yml').unlink()
+        code, out, _ = run('digest', 'read', '--repo', str(repo))
+        self.assertEqual((code, out['reason']), (2, 'policy_missing'))
+        self.assertTrue(out['config'].endswith('/.harness-plugins/digest.config.yml'))
+        (repo / '.harness-plugins/digest.config.yml').write_text('version: 1\n')
+        code, out, _ = run('digest', 'check', '--repo', str(repo))
+        self.assertEqual((code, out['reason']), (2, 'schema_violation'))
+        self.assertIn('top-level key', out['error'])
+        (repo / '.harness-plugins/digest.config.yml').write_text('a: [\n')
+        code, out, _ = run('digest', 'check', '--repo', str(repo))
+        self.assertEqual((code, out['reason']), (2, 'schema_violation'))
+        self.assertIn('読めない', out['error'])
+        code, out, err = run('digest', 'check')
+        self.assertEqual((code, out), (2, None))
+        self.assertIn('--repo', err)
+
+        xdg = self.root / 'xdg'
+        (xdg / 'harness-plugins').mkdir(parents=True)
+        example = ROOT / 'plugins/collect-and-digest/skills/collect-sessions/assets/collect-sessions.config.example.yml'
+        target = xdg / 'harness-plugins/collect-sessions.config.yml'
+        target.write_text(example.read_text())
+        code, out, _ = run('collect-sessions', 'check', env={'XDG_CONFIG_HOME': str(xdg)})
+        self.assertEqual((code, out), (0, {'status': 'ok', 'config': str(target)}))
+        code, out, _ = run('collect-sessions', 'read', env={'XDG_CONFIG_HOME': str(xdg)})
+        self.assertEqual((code, out['config'], out['values']['version']), (0, str(target), 1))
+        code, out, err = run('collect-sessions', 'check', '--repo', str(repo), env={'XDG_CONFIG_HOME': str(xdg)})
+        self.assertEqual((code, out), (2, None))
+        self.assertIn('--repo', err)
+        target.write_text('version: 1\n')
+        code, out, _ = run('collect-sessions', 'read', env={'XDG_CONFIG_HOME': str(xdg)})
+        self.assertEqual((code, out['reason']), (2, 'schema_violation'))
+        target.unlink()
+        code, out, _ = run('collect-sessions', 'check', env={'XDG_CONFIG_HOME': str(xdg)})
+        self.assertEqual((code, out['reason'], out['config']), (2, 'policy_missing', str(target)))
+
 if __name__ == '__main__':
     unittest.main()

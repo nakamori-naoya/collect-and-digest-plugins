@@ -3,7 +3,7 @@
 version: 2
 name: make-session-digest
 description: 対象日に活動したエージェントセッションの日次要約を作る
-inputs: [user_input]
+inputs: [user_input, references]
 
 requires:
   - {plugin: write-doc, marketplace: write-doc}
@@ -38,5 +38,5 @@ steps:
     purpose: materialをkind:textの素材にし、日次記録の契約とprivacy境界を追加指示として渡してMarkdownを書いて保存する
     input:
       document_type: period-digest
-    needs: [material, input_hash, target_date, session_count]
+    needs: [material, input_hash, target_date, session_count, references]
     provides: [status, path, reason]
