@@ -26,8 +26,16 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 
 ## 停止条件
 
-- 設定fileが無い、schema に合わない、有効なsourceが無い。診断を報告して止まる。
-- `session.py scan` が `2` を返した。索引を更新したことにせず、`reason` を報告する。
+止まるのは次の場合である。索引を更新したことにせず、診断または `reason` を報告する。
+
+- 設定fileが無い、schema に合わない、有効なsourceが無い。
+- `session.py scan` が `2` を返した（enabledなrootの欠落、中間のparse不能なJSONL、上限超過、索引破損、保存先の安全違反）。
+
+次は止まらず、記録して進む。
+
+- 対象schema外のfileや、有効なturn / timestampをまだ持たない空セッションがある。1件だけ理由付きでスキップして走査を続け、`counts.unrecognized` に数える。
+- 末尾が書きかけのセッションがある。`provisional` として索引に載せ、報告に明記する。
+- 対象日の指定が無い。設定の `timezone` の当日を対象日として進め、報告に明記する。
 
 ## 出力
 

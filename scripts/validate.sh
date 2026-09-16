@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scenario: collect-and-digest package が公開入口5つで自己完結し、各入口の決定論的toolが閉じた契約を守る
-# 機械検査は宣言と実体の対応、隣接playbook.ymlの契約、設定fileのschema、material / cleanup の入出力だけを判定する。
+# 機械検査は宣言と実体の対応、隣接playbook.ymlの契約、設定fileのschema、material の入出力だけを判定する。
 # 収集内容の妥当性、要約の品質、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -82,90 +82,67 @@ while IFS= read -r script; do python3 -m py_compile "$script" || failed=1; done 
 # ── 決定論的toolの契約 ────────────────────────────────────────────────
 python3 -m unittest discover -s "$ROOT/tests" -p test_collection_integrity.py && pass "collection_store / 設定schema / 置き場解決の単体検査" || fail "tests/test_collection_integrity.py"
 
+# make-session-digest material.py: 索引からmaterialを標準出力へ返す。fileは書かない。
+# 正本: 索引のschema（REQUIRED_INDEX_KEYS）。入力: --day-index の絶対pathと --date。正規化: JSONL行ごとのparse。
+# 合格述語: 対象日の完成済みroot sessionをrecordsにし、artifact.material / input_hash / target_date / session_count を返す。
+# 診断: 標準出力の JSON error、exit 2 / 4。正例: 1 root session。反例: provisional、原文欠落、相対path。
+# 境界例: 対象日に0件（exit 4）、旧形の --out-dir / --cleanup 引数（argparseで拒否）、fileが生成されないこと。
 validate_session_digest_material_fixture() {
   local fixture="$TMP_ROOT/session-digest-material"
   local script="$ENTRY_DIR/make-session-digest/scripts/material.py"
-  local material="$fixture/private/session-material-fixture.json"
-  local output="$fixture/final.md"
-  local index="$fixture/index.jsonl"
-  local status=0 out generated_material
-  mkdir -p "$fixture/private" "$fixture/non-git"
+  local status=0
+  mkdir -p "$fixture/non-git"
   fixture=$(cd "$fixture" && pwd -P)
-  material="$fixture/private/session-material-fixture.json"
-  output="$fixture/final.md"
-  index="$fixture/index.jsonl"
-  chmod 700 "$fixture/private"
-  printf '%s\n' 'final' > "$output"
-  printf '%s\n' 'index' > "$index"
-
-  make_material() { printf '%s\n' 'material' > "$1"; chmod 600 "$1"; }
-  cleanup_ok() { python3 "$script" --cleanup --material-path "$1" --path "$output" --index "$index"; }
-  cleanup_rejected() { if cleanup_ok "$1" >/dev/null 2>&1; then return 1; fi; [ -e "$1" ] || [ -L "$1" ]; }
-
-  make_material "$material"
-  out=$(cleanup_ok "$material") || status=1
-  jq -e '.decision=="removed"' <<<"$out" >/dev/null || status=1
-  [ ! -e "$material" ] || status=1
-  out=$(cleanup_ok "$material") || status=1
-  jq -e '.decision=="missing"' <<<"$out" >/dev/null || status=1
-
-  make_material "$material"
-  ln -s "$material" "$fixture/private/session-material-link.json"
-  cleanup_rejected "$fixture/private/session-material-link.json" || status=1
-  chmod 644 "$material"; cleanup_rejected "$material" || status=1; chmod 600 "$material"
-  chmod 755 "$fixture/private"; cleanup_rejected "$material" || status=1; chmod 700 "$fixture/private"
-  mkdir "$fixture/danger-root"; chmod 700 "$fixture/danger-root"
-  make_material "$fixture/danger-root/session-material-dangerous.json"
-  if TMPDIR="$fixture/danger-root" python3 "$script" --cleanup --material-path "$fixture/danger-root/session-material-dangerous.json" --path "$output" --index "$index" >/dev/null 2>&1; then status=1; fi
-  [ -e "$fixture/danger-root/session-material-dangerous.json" ] || status=1
-  if python3 "$script" --cleanup --material-path "$material" --path "$fixture/absent.md" --index "$index" >/dev/null 2>&1; then status=1; fi
-  if python3 "$script" --cleanup --material-path "$material" --path "$material" --index "$index" >/dev/null 2>&1; then status=1; fi
-  mkdir "$fixture/private/session-material-directory.json"
-  cleanup_rejected "$fixture/private/session-material-directory.json" || status=1
-  make_material "$fixture/private/not-session-material.json"
-  cleanup_rejected "$fixture/private/not-session-material.json" || status=1
 
   printf '%s\n' '{"schema":1,"source":"fixture","source_id":"root","activity_dates":["2026-09-02"],"relation":"root","parent_source_id":null,"state":"quiescent","provisional":false,"source_ref":{"path":"'"$fixture/source.jsonl"'","fingerprint":"fixture"},"observed_at":"2026-09-02T00:00:00Z","collector":"fixture"}' > "$fixture/day-index.jsonl"
   printf '%s\n' '{}' > "$fixture/source.jsonl"
-  (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02 --out-dir "$fixture/generated") > "$fixture/generated.json" || status=1
+  (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02) > "$fixture/generated.json" || status=1
   jq -e '.decision=="written" and
-    (.artifact|keys|sort)==["input_hash","material_path","session_count","target_date"] and
-    (.artifact.material_path|startswith("'"$fixture"'")) and
+    (.artifact|keys|sort)==["input_hash","material","session_count","target_date"] and
+    (.artifact.material|type=="array" and length==1) and
+    (.artifact.material[0]|keys|sort)==["collector","display","observed_at","parent_source_id","relation","source","source_fingerprint","source_id","source_path","target_date"] and
+    .artifact.material[0].display==true and
     .artifact.target_date=="2026-09-02" and .artifact.session_count==1 and
+    (.artifact.input_hash|test("^[0-9a-f]{64}$")) and
     .counts.items==1' "$fixture/generated.json" >/dev/null || status=1
-  generated_material=$(jq -r '.artifact.material_path' "$fixture/generated.json")
-  [ -f "$generated_material" ] \
-    && python3 -c 'import os, stat, sys; raise SystemExit(0 if stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o600 else 1)' "$generated_material" \
-    || status=1
+  # fileを書かない: fixture配下に生成物が増えていない（non-gitは空のまま）。
+  [ -z "$(find "$fixture/non-git" -mindepth 1)" ] || status=1
+  [ -z "$(find "$fixture" -name 'session-material-*')" ] || status=1
 
-  # 代表入力からwrite-doc v2のtyped materialへ、唯一のproducer値を直接接続できる。
-  mkdir -p "$fixture/output"
+  # 代表入力からwrite-doc v2のtyped materialへ、kind:textとして直接接続できる。
   jq -n --slurpfile generated "$fixture/generated.json" \
     --arg output_directory "$fixture/output" \
-    '{material:[{kind:"file",path:$generated[0].artifact.material_path}],
+    '{material:[{kind:"text",content:($generated[0].artifact.material|tojson)}],
       document_type:"period-digest",output_directory:$output_directory,
       name:($generated[0].artifact.target_date+".md")}
-    | select(.material==[{kind:"file",path:$generated[0].artifact.material_path}] and
+    | select((.material|length==1) and .material[0].kind=="text" and (.material[0].content|fromjson|length==1) and
         .document_type=="period-digest" and (.output_directory|type=="string") and
         .name=="2026-09-02.md" and (has("update_target")|not))' >/dev/null || status=1
 
-  # 対象日に0件ならmaterialも空の最終資料も作らない。
-  if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-03 --out-dir "$fixture/empty") >/dev/null 2>&1; then
-    status=1
-  fi
-  [ ! -e "$fixture/empty" ] || status=1
+  # 対象日に0件なら exit 4 で止まり、空の最終資料も作らない。
+  (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-03) >/dev/null 2>&1
+  [ "$?" -eq 4 ] || status=1
 
-  # provisionalは完成済み素材ではないため、documentへ進まず停止する。
+  # provisionalは完成済み素材ではないため、documentへ進まず止まる（exit 2）。
   jq -c '.provisional=true' "$fixture/day-index.jsonl" > "$fixture/provisional-index.jsonl"
-  if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/provisional-index.jsonl" --date 2026-09-02 --out-dir "$fixture/provisional") >/dev/null 2>&1; then
-    status=1
-  fi
-  [ ! -e "$fixture/provisional" ] || status=1
+  (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/provisional-index.jsonl" --date 2026-09-02) >/dev/null 2>&1
+  [ "$?" -eq 2 ] || status=1
+
+  # 反例: 原文が無い、相対path。境界例: 旧形の引数は受け付けない。
+  jq -c '.source_ref.path="'"$fixture/absent.jsonl"'"' "$fixture/day-index.jsonl" > "$fixture/absent-index.jsonl"
+  if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/absent-index.jsonl" --date 2026-09-02) >/dev/null 2>&1; then status=1; fi
+  if (cd "$fixture" && python3 "$script" --day-index day-index.jsonl --date 2026-09-02) >/dev/null 2>&1; then status=1; fi
+  if python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02 --out-dir "$fixture/old" >/dev/null 2>&1; then status=1; fi
+  if python3 "$script" --cleanup --material-path "$fixture/x.json" --path "$fixture/y.md" --index "$fixture/day-index.jsonl" >/dev/null 2>&1; then status=1; fi
+  [ ! -e "$fixture/old" ] || status=1
+
+  # playbookに一時file配管が無い。
+  yq -o=json -I=0 '.' "$ENTRY_DIR/make-session-digest/playbook.yml" | jq -e '([.steps[].id]|index("cleanup")|not) and ([.steps[]|.provides[]?]|index("material_path")|not) and ([.steps[]|.provides[]?]|index("material"))' >/dev/null || status=1
   return "$status"
 }
 
 
-validate_session_digest_material_fixture && pass "make-session-digest material.py の生成・cleanup・0件・provisional" || fail "make-session-digest material.py"
+validate_session_digest_material_fixture && pass "make-session-digest material.py の標準出力material・0件・provisional・旧引数拒否" || fail "make-session-digest material.py"
 
 # digest material.py: 設定fileの1層読み取り、期間、型固定、0件 / skipped の区別
 validate_digest_material() {

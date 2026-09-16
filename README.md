@@ -136,3 +136,4 @@ bash scripts/validate.sh
 - 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `finalize.sh`）、4層の設定探索、`config/defaults.yml` へのfallback、入口ごとのnested manifestを撤去した。各scriptは1層の設定fileを直接読み、schemaを検査し、相対pathをrepository root（設定fileの2つ上）基準で解決する。`collect-slack` のMCP実行計画は `scripts/message.py plan` が設定から決定論的に組み立てる。
 - `digest.config.yml` は `playbook.yml` の複製ではなく、`version` / `sources` / `labels` / `output` / `digests` だけを持つ。工程は上書きできない。
 - 外部依存の実行時解決（`dependencies.yml` による束縛、`--explain`）は撤去した。
+- `make-session-digest` のmaterial file（run専用0700 directory、`material.py --out-dir` / `--cleanup`、`cleanup` 工程）を撤去した。`material.py` はmaterialを標準出力へ返し、同じagentが `write-doc` へ `kind: text` で渡す。
