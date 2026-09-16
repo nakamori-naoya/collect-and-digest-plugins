@@ -10,6 +10,7 @@ description: collect-sessionsの非公開索引を使い、対象日に活動し
 ## 入力
 
 - `user_input`: 対象日の指定を含む依頼。指定が無ければ `output.timezone` の当日。
+- `references`: 任意。追加で従う資料の絶対path配列。手順の最初に読み、`write-doc` の `references` へ加える。プロジェクト固有の規約や文脈は、対象repositoryのAGENTS.md / CLAUDE.mdとこの入力で渡される。
 - 同じdirectoryの [`playbook.yml`](playbook.yml) の `output`（`dir` / `format` / `timezone` / `subagents`）と `contract`（`session_item_fields` / `document_type` / `output_name`）。同じagentがこのYAMLを読み、`steps` の宣言順を実行順の正本にする。
 - 収集済みの日次索引: 同じpackageの公開skill `collect-sessions` が `state_dir` に作る。その設定は利用者の `collect-sessions.config.yml` にあり、この入口は読まない。
 
@@ -24,7 +25,7 @@ description: collect-sessionsの非公開索引を使い、対象日に活動し
 
 1. **収集する（`collect`）。** 同じpackageの公開skill `collect-sessions` の手順で対象日の索引を確定し、返った `index` / `target_date` / `provisional` を使う。外部runtimeが `target_date` を注入したことにせず、collectが返した値だけを後続へ渡す。
 2. **materialをまとめる（`material`）。** `python3 scripts/material.py --day-index <index> --date <target_date> [--include-subagents]` を実行する。入力は索引の絶対pathと対象日、出力は標準出力のJSON 1 objectで、`artifact.material`（セッションごとのrecordsの配列。keyは `contract.session_item_fields`）、`artifact.input_hash`、`artifact.target_date`、`artifact.session_count`、`counts.items` を持つ。fileは書かない。終了codeは `0` = 組み立てた、`2` = 索引不在・読めない・provisional / 未完成のセッション・原文の欠落、`4` = 対象日に完成済みのroot sessionが無い（診断は標準出力のJSON `error`）。`0` 以外なら止まる（`4` は0件として報告する）。
-3. **資料化を委譲する（`document`）。** 公開Skill `write-doc:write-doc` へ次を直接渡す。`material` は手順2の `artifact.material` をJSON文字列にして `{kind: text, content: <JSON文字列>}` にした1要素の配列（fileに書いてから渡さない。`items` のような別名やセッション配列そのものは渡さない）。`document_type` は `contract.document_type`（`period-digest`）。`output_directory` は `output.dir` を展開した絶対path、`name` は `contract.output_name` の `<target_date>` を対象日へ置換した `.md` 名。更新の明示があるときだけこの2つに代えて `update_target`。`references` は `references/output.md` と `references/privacy.md` の絶対path。返ったobjectの `status` が `completed` なら `path` を最終資料、`failed` なら `reason` を報告して止まる。
+3. **資料化を委譲する（`document`）。** 公開Skill `write-doc:write-doc` へ次を直接渡す。`material` は手順2の `artifact.material` をJSON文字列にして `{kind: text, content: <JSON文字列>}` にした1要素の配列（fileに書いてから渡さない。`items` のような別名やセッション配列そのものは渡さない）。`document_type` は `contract.document_type`（`period-digest`）。`output_directory` は `output.dir` を展開した絶対path、`name` は `contract.output_name` の `<target_date>` を対象日へ置換した `.md` 名。更新の明示があるときだけこの2つに代えて `update_target`。`references` は `references/output.md` と `references/privacy.md` の絶対pathに、入力の `references` を加えたもの。返ったobjectの `status` が `completed` なら `path` を最終資料、`failed` なら `reason` を報告して止まる。
 
 ## 停止条件
 
