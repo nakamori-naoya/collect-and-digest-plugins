@@ -1,6 +1,6 @@
 {
   "name": "collect-and-digest",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "会議・Slack・agent sessionの収集と、期間ダイジェスト作成の自己完結skillを提供する",
   "author": {
     "name": "NaoyaNakamori"

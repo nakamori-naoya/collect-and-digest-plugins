@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "plugin": "collect-and-digest",
+  "version": "6.1.0",
+  "created_at": "2026-09-16T12:27:23.609156+00:00",
+  "notes": "make-session-digest の日次記録の型を write-doc の文書型 agent-session-digest へ切り替え（本文の7小見出しと front matter の形は write-doc の template が正本）。references/output.md から本文の形を消し、front matter 各値の決め方・タグ・保存契約だけを残す。write-doc へは入力の references だけを渡す。保守 tool の複製を消し harness-tools を兄弟 checkout で使う形へ切り替え。",
+  "breaking": "make-session-digest は document_type: agent-session-digest を渡すので、write-doc 9.1.0 未満（この型を持たない）と組み合わせると write-doc が failed を返す。",
+  "migration": "write-doc を 9.1.0 以上へ更新してから本 package を更新する。既存の日次記録 file はそのまま読める（front matter と小見出しは同じ）。",
+  "checks": {
+    "codex": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed（merge 後に harness-tools の install-plugins.sh で導入）",
+      "evidence": "bash scripts/validate.sh: exit 0 (Validation: passed。test-hardening --repository と消費側契約 lint 両 runtime 0 finding を含む)"
+    },
+    "claude": {
+      "status": "manifest-and-contract-tests-passed",
+      "native-client-installation": "not-executed（merge 後に harness-tools の install-plugins.sh で導入）",
+      "evidence": "bash scripts/validate.sh: exit 0 (Validation: passed。test-hardening --repository と消費側契約 lint 両 runtime 0 finding を含む)"
+    },
+    "root-validation": "root scripts/validate.sh（harness-tools/tools/validate-workspace.sh 経由）consumers-a 所有 7 repository: Root validation: passed",
+    "real-model-run": "not-executed（make-session-digest を実 model で通す E2E は未実施）"
+  },
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "plugins/collect-and-digest/.codex-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
+    "plugins/collect-and-digest/.claude-plugin/plugin.json"
+  ]
+}

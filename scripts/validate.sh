@@ -4,6 +4,9 @@
 # 収集内容の妥当性、要約の品質、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# 保守toolの正本は兄弟checkoutの harness-tools。無ければ止まる（fixtureで代用しない）。
+TOOLS="$ROOT/../harness-tools/tools"
+[ -d "$TOOLS" ] || { echo "[error] 兄弟 checkout harness-tools が無い: $TOOLS" >&2; exit 2; }
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/collect-and-digest-validation.XXXXXX") || exit 2
 export TMPDIR="$TMP_ROOT"
 export PYTHONDONTWRITEBYTECODE=1
@@ -18,7 +21,7 @@ ENTRIES=(collect-notes collect-sessions collect-slack digest make-session-digest
 
 # ── 配置と identity ──────────────────────────────────────────────────────
 for market in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
-  if jq -e '.name=="collect-and-digest" and (.plugins|length)==1 and .plugins[0].name=="collect-and-digest" and .plugins[0].version=="6.0.0"
+  if jq -e '.name=="collect-and-digest" and (.plugins|length)==1 and .plugins[0].name=="collect-and-digest" and .plugins[0].version=="6.1.0"
             and ((.plugins[0].source=="./plugins/collect-and-digest") or (.plugins[0].source=={"source":"local","path":"./plugins/collect-and-digest"}))' "$ROOT/$market" >/dev/null; then
     pass "$market identityとsource"
   else
@@ -52,14 +55,16 @@ for entry in "${ENTRIES[@]}"; do
     pass "$entry: 禁止参照形と旧runtime呼び出しが無い"
   fi
 done
+# 型は入口ごとに固定: digest は period-digest、make-session-digest は agent-session-digest（型の正本は write-doc の template）。
 for entry in digest make-session-digest; do
   dir="$ENTRY_DIR/$entry"
   pb=$(yq -o=json -I=0 '.' "$dir/playbook.yml")
-  jq -e --arg n "$entry" '.version==2 and .name==$n and .requires==[{"plugin":"write-doc","marketplace":"write-doc"}]
+  case "$entry" in digest) doc_type=period-digest ;; make-session-digest) doc_type=agent-session-digest ;; esac
+  jq -e --arg n "$entry" --arg t "$doc_type" '.version==2 and .name==$n and .requires==[{"plugin":"write-doc","marketplace":"write-doc"}]
       and ((.steps|map(.id)|unique|length)==(.steps|length))
       and all(.steps[]; ([has("agent_work"),has("script"),has("skill"),has("playbook")]|map(select(.))|length)==1)
       and all(.steps[]|select(has("playbook")); .playbook=="write-doc")
-      and ((.steps[]|select(.id=="document")).input.document_type=="period-digest")
+      and ((.steps[]|select(.id=="document")).input.document_type==$t) and ((.contract.document_type // $t)==$t)
       and (.. | objects | has("digests") | not)' <<<"$pb" >/dev/null \
     && pass "$entry: playbook.yml identity・外部requires・工程種別・型固定" || fail "$entry: playbook.yml"
   scripts_ok=1
@@ -113,10 +118,10 @@ validate_session_digest_material_fixture() {
   jq -n --slurpfile generated "$fixture/generated.json" \
     --arg output_directory "$fixture/output" \
     '{material:[{kind:"text",content:($generated[0].artifact.material|tojson)}],
-      document_type:"period-digest",output_directory:$output_directory,
+      document_type:"agent-session-digest",output_directory:$output_directory,
       name:($generated[0].artifact.target_date+".md")}
     | select((.material|length==1) and .material[0].kind=="text" and (.material[0].content|fromjson|length==1) and
-        .document_type=="period-digest" and (.output_directory|type=="string") and
+        .document_type=="agent-session-digest" and (.output_directory|type=="string") and
         .name=="2026-09-02.md" and (has("update_target")|not))' >/dev/null || status=1
 
   # 対象日に0件なら exit 4 で止まり、空の最終資料も作らない。
@@ -163,7 +168,10 @@ validate_digest_material() {
 }
 validate_digest_material && pass "digest material.py の設定読み取り・期間・型固定・skipped" || fail "digest material.py"
 
-# ── 消費側の契約lint（G2同期後の共有版）: 外部依存の内部名を消費側の文書・script・設定へ書いていない ──
+# ── repositoryの回帰検査（harness-tools）: CI workflowのSHA固定、公開入口の一意性、doctorの読み取り専用性 ──
+python3 "$TOOLS/test-hardening.py" --repository "$ROOT" && pass "test-hardening --repository" || fail "test-hardening --repository"
+
+# ── 消費側の契約lint（harness-tools）: 外部依存の内部名を消費側の文書・script・設定へ書いていない ──
 # 検出語は兄弟checkoutの実配布物（provider package root）から作る。兄弟が無ければ緑にせず失敗させる。
 lint_consumer_contract() {
   local map="$TMP_ROOT/lint-dev-map.json" status=0 runtime
@@ -174,7 +182,7 @@ lint_consumer_contract() {
   jq -n --arg g "$(cd "$grill" && pwd -P)" --arg w "$(cd "$write_doc" && pwd -P)" --arg a "$(cd "$awp" && pwd -P)" \
     '{schema:1,dependencies:{"grill/grill":$g,"write-doc/write-doc":$w,"agent-work-policy/agent-work-policy":$a}}' > "$map" || return 1
   for runtime in claude codex; do
-    HARNESS_PLUGIN_DEV_ROOTS="$map" python3 "$ROOT/scripts/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
+    HARNESS_PLUGIN_DEV_ROOTS="$map" python3 "$TOOLS/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
   done
   return "$status"
 }
