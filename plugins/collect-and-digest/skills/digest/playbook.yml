@@ -1,0 +1,37 @@
+# digest — 収集物から期間ダイジェストを1本作る。
+# 収集元と実行定義は <repo>/.harness-plugins/digest.config.yml（利用者設定）が持ち、工程順はこのYAMLが正本。
+# 書くこと自体は write-doc の公開契約へ委ねる。
+version: 2
+name: digest
+description: 収集物から期間ダイジェストの資料を1本作る
+inputs: [user_input]
+
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+
+steps:
+  - id: interpret-request
+    agent_work: invoking_agent
+    purpose: 同じagentが利用者の依頼を設定fileのdigests宣言と照合し、対象digestと基準時刻を確定する
+    needs: [user_input]
+    provides: [digest_name, reference_time]
+
+  - id: material
+    script: scripts/material.py
+    purpose: 設定fileの置き場と期間から素材を選ぶ
+    needs: [digest_name, reference_time]
+    provides: [items, skipped, period, type, output, prompt]
+
+  - id: meta
+    script: scripts/doc-meta.py
+    purpose: 資料の末尾に載せる静的情報の骨格を作る（参加者は書き手が埋める）
+    needs: [items, period]
+    provides: [meta]
+
+  - id: document
+    playbook: write-doc
+    purpose: 素材、型、追加指示を渡して資料を書かせる
+    input:
+      document_type: period-digest
+    needs: [items, period, type, output, prompt, meta]
+    provides: [status, path, reason]
