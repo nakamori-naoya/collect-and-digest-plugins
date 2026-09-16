@@ -8,7 +8,7 @@ inputs: [user_input, references]
 requires:
   - {plugin: write-doc, marketplace: write-doc}
 
-# 保存先と日次記録の契約。material.py と document 工程が読む。
+# 保存先と資料化の契約。material.py と document 工程が読む。資料の型（見出し・front matter）は write-doc の agent-session-digest 型が定める。
 # materialはmaterial.pyが標準出力へ返し、同じagentがインメモリで保持してwrite-docへkind:textで渡す。一時fileやcleanup工程は無い。
 output:
   dir: ~/agent-session-digests
@@ -17,7 +17,7 @@ output:
   subagents: exclude
 contract:
   session_item_fields: [source, source_id, source_path, source_fingerprint, relation, parent_source_id, target_date, display, observed_at, collector]
-  document_type: period-digest
+  document_type: agent-session-digest
   output_name: <target_date>.md
 
 steps:
@@ -35,8 +35,8 @@ steps:
 
   - id: document
     playbook: write-doc
-    purpose: materialをkind:textの素材にし、日次記録の契約とprivacy境界を追加指示として渡してMarkdownを書いて保存する
+    purpose: materialをkind:textの素材にし、write-docのagent-session-digest型でMarkdownを書いて保存する
     input:
-      document_type: period-digest
+      document_type: agent-session-digest
     needs: [material, input_hash, target_date, session_count, references]
     provides: [status, path, reason]

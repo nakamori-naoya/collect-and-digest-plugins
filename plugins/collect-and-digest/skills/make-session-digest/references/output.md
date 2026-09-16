@@ -1,25 +1,13 @@
 # 日次記録の契約
 
-## 本文
+本文の見出しとfront matterの形は、`write-doc` の `agent-session-digest` 型のtemplateが定める。この入口が持つのは、front matterの各値をどう決めるか、タグに何を入れてよいか、いつ保存を依頼するかの判断である。
 
-セッションごとに不透明化したIDとsource表示名を置き、次の見出しをこの順で持つ。該当しない節も省略せず`なし`と書く。
-
-1. 達成したこと
-2. 変更した対象
-3. 採用した判断と理由
-4. 却下した選択肢
-5. 実行した検証と結果
-6. 未解決事項
-7. 次にやること
-
-会話の時系列や発言の言い換えではなく、後から仕事へ再利用できる事実と判断を書く。必要な根拠を保ち、文字数を内容品質の代理条件にしない。
-
-## front matter
+## front matterの各値
 
 最終Markdownのfront matterに`schema: 2`、`kind: agent-session-digest`、`target_date`、`timezone`、`input_hash`、`generated_at`、`session_count`、`summary_schema`、`sessions`、`generator`、`validation`、`human_reviewed`、`tags`を持たせる。本文とは別のmetadataファイルを作らない。
 
 - `sessions`: `source`、不透明化済み`source_id`、索引の`observed_at`。どのセッションをいつ収集したかを残す。
-- `generator`: 実際に要約した`model`と、この契約を指す`prompt_ref`。不明な値を推測しない。
+- `generator`: 実際に要約した`model`と、文書型の名前を指す`prompt_ref`。不明な値を推測しない。
 - `validation`: `privacy`、`structure`、`source_unchanged`を`passed` / `failed` / `not_checked`で記録する。実行していない検証は`not_checked`にする。
 - `human_reviewed`: 保存時は原則`false`。人が内容を確認したときだけ別の明示的な操作で`true`にする。
 - `tags`: `projects`、`repositories`、`purposes`、`decisions`、`open_questions`の配列を持つ。
