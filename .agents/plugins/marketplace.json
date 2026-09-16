@@ -8,7 +8,7 @@
       "name": "collect-and-digest",
       "source": {
         "source": "local",
-        "path": "./plugins"
+        "path": "./plugins/collect-and-digest"
       },
       "policy": {
         "installation": "AVAILABLE",

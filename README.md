@@ -1,6 +1,6 @@
 # Collect and Digest
 
-会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。
+会議、Slack、agent sessionを収集し、期間digestを作るClaude Code/Codex両対応marketplaceである。公開するインストール対象はpackage `collect-and-digest`（`./plugins/collect-and-digest`）1件で、公開入口は自己完結skill 5つ（`collect-notes` / `collect-slack` / `collect-sessions` / `digest` / `make-session-digest`）である。
 
 ## こんなときに使う
 
@@ -14,12 +14,17 @@
 
 ## 公開入口を選ぶ
 
-次の入口から依頼します。内部のスキルや処理は、入口が必要に応じて呼び出します。
+次の入口から依頼します。各入口は `SKILL.md`、`references/`、`scripts/`、`assets/` だけで完結し、内部skillを持ちません。
 
-| 欲しい結果 | 公開入口 |
-|---|---|
-| session索引から日次の短い記録を作る | `make-session-digest` |
-| 複数の収集物から期間資料を作る | `digest` |
+| 欲しい結果 | 公開入口 | 設定file |
+|---|---|---|
+| Notion / Google Docsの議事録を対象日で集める | `collect-notes` | `<repo>/.harness-plugins/collect-notes.config.yml` |
+| Slackの発言を対象日で集める | `collect-slack` | `<repo>/.harness-plugins/collect-slack.config.yml` |
+| Claude Code / Codexのsessionを非公開索引にする | `collect-sessions` | `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml` |
+| 複数の収集物から期間資料を作る（定義と素材数の照会も） | `digest` | `<repo>/.harness-plugins/digest.config.yml` |
+| session索引から日次の短い記録を作る | `make-session-digest` | 無し（入口の `playbook.yml` の `output` / `contract`） |
+
+設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。keyの一覧と型は各 `SKILL.md` の入力に、fileが無い・schemaに合わないときの停止は各scriptの診断にある。
 
 collectorは要約しない。`digest`は収集元を変更しない。この分離により、収集漏れの確認と要約内容のレビューを別々に行える。
 
@@ -108,25 +113,7 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 
 - `write-doc@write-doc`
 
-別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
-
-## 設定の上書きと優先順位
-
-設定を持つpluginは、優先順位が最も高い1ファイルだけを選ぶ。複数層をマージしないため、上書きするYAMLには同梱設定と同じ必須項目をすべて含める。必須項目の不足、未知のキー、許可されていない値があれば実行を停止する。
-
-skillの静的設定は、上から順に優先する。
-
-1. scope: `<scope>/<plugin-name>.config.yml`。呼び出し元がscopeを渡した実行だけで使う
-2. local: `<repo>/.harness-plugins/<plugin-name>.local.yml`。端末固有で、通常はcommitしない
-3. repository: `<repo>/.harness-plugins/<plugin-name>.config.yml`
-4. personal: `$XDG_CONFIG_HOME/harness-plugins/<plugin-name>.config.yml`（未設定時は `~/.config/harness-plugins/<plugin-name>.config.yml`）
-5. bundled defaults: plugin同梱の既定設定
-
-playbookの静的設定は、scope、repository、personal、同梱 `playbook.yml` の順で優先する。playbookにはlocal層がない。入口playbook自身は通常のrepository設定を使い、下段のpluginへscopeを渡す。単体呼び出しではscopeを読まない。
-
-skillでは、同梱設定の `prompt_parameters` に宣言されたpathだけ、依頼で明示された値を `--override=<path>=<value>` として最終上書きできる。宣言されていないpathを任意に上書きすることはできない。
-
-たとえば入口は `<repo>/.harness-plugins/digest.config.yml`、その入口から呼ぶ `write-doc` だけの設定は `<repo>/.harness-plugins/scopes/digest/write-doc.config.yml` に置く。
+別repositoryへの依存は `digest` と `make-session-digest` の `playbook.yml` の `requires` に `{plugin, marketplace}` で宣言し、`playbook:` の工程として呼ぶ。相手の内部機能名へ依存せず、versionは固定しない。
 
 ## 検証
 
@@ -138,46 +125,14 @@ bash scripts/validate.sh
 
 - [収集とダイジェスト作成の業務知識と振る舞い](docs/2026-09-02-収集とダイジェスト作成-業務知識と振る舞い.md)
 
-## 実行契約の検証と配布
+## 保守tool
 
-`python3 scripts/doctor.py --repository . --repo <対象repository>` はCLI構文、公開skillと設定・依存の解決を読み取り専用で診断する。設定解決を含めない検査は `--distribution-only` を明示する。
+`scripts/doctor.py`、`scripts/lint-consumer-contract.py`、`scripts/evaluate-skills.py`、`scripts/release.py`、`scripts/sync-runtime.py`、`scripts/test-hardening.py`、`scripts/validate-distribution.py` と `shared/` は、Product Planning repositoryの `shared/runtime-source` を正本とする保守用の複製である。実行時に別repositoryや生成CLIは不要である。
 
-doctorのfull診断は、依存を**実配布物**に対して解く。依存先は`HARNESS_PLUGIN_REAL_ROOTS`（契約ID→package rootのJSON）か、兄弟checkout `../<marketplace>-plugins/plugins`（親directoryは`HARNESS_PLUGIN_SIBLING_ROOT`で差し替える）から探し、どちらでも見つからなければfixtureへ倒さず理由付きでNGにする。同梱既定に実値を置かない`prompt_parameters`（`required: true`で`default`が無いもの）を持つskillは、上書きが無ければ必ず落ちるので実行せず、`skipped: requires-override`と必要なパラメータ名を出す。これは配布物の不具合ではないのでNGにしない。
+## 配置と設定の変更（2026-09-16）
 
-依存参照の検査はresolverとlintが同じ関数で行う。外部依存を指せるのは`${.deps.<論理名>.root}`直下3点と`${.deps.<論理名>.entry}`だけで、それ以外は`external-dependency-path`で落ちる。内部依存（同一package）の`${.deps.<内部名>.skills.<名前>}`は、解決結果に実在するskill名だけを許し、綴り違いや名前の無い形は`internal-skill-unknown`で落ちる。`--explain`の依存行は`[外部] <論理名> → <marketplace>/<plugin> <version> [runtime/source_kind]: <root>`の形で、束縛で実体が変わったときだけ行末に`← <層>`が付く。
-
-CIは同ownerの依存repositoryを兄弟directoryへcheckoutしてからvalidate.shを走らせる。**兄弟のrefは既定でmainである。** PR headと同名のbranchを採るのは、(1)実行が`pull_request`であり、(2)PR headが同一repository（forkではない）で、(3)同ownerの兄弟repoにその名前のbranchが実在する、の3つが揃うときだけで、選んだrefと理由はログへ出る。forkのPR作者はownerの兄弟repoにbranchを作れないため、PRから兄弟checkoutの内容を差し替える経路は無い。code scanningの`actions/untrusted-checkout/medium`はこの根拠により`won't fix`として扱う。
-
-`bash scripts/validate.sh` は機能・不正入力・配布の検証を行い、GitHub Actionsの `validate (ubuntu-latest)` / `validate (macos-latest)` でも実行する。[意味的評価シナリオ](evals/scenarios.json)は `scripts/evaluate-skills.py` で実モデルと別のjudgeモデルへ渡し、モデルID・設定・入力・応答・判定根拠を記録する。criterionの真偽は意味評価の記録であり、CLIの合否にはしない。CLIの非zero終了はadapter失敗、不正な応答、根拠不整合など記録を完了できない操作失敗を示す。人またはエージェントが記録を読み、構造検証とは別に根拠付きで評価する。未実行を成功として扱わない。
-
-version更新は `python3 scripts/release.py --plugin <公開plugin名> --version <semver> --notes <変更内容> --breaking <互換性への影響> --migration <移行方法> --checks <codex/claudeの検証結果JSON>` で計画を確認し、`--apply` で両runtimeのmanifestとmarketplaceを更新する。検証結果には未検証も明示できる。配布・外部publishは別操作であり、このcommandでは行わない。
-
-### 依存先を束縛する`dependencies.yml`
-
-契約ID（`marketplace/plugin`）に対する実体を`{plugin, marketplace}`で束縛する。**top-levelは`version: 1`と`bindings`の2つだけである。** それ以外のキーがあると`[error:binding-file-invalid] reason=top-level-keys`で停止する。
-
-```yaml
-version: 1
-bindings:
-  "write-doc/write-doc": {plugin: write-documents, marketplace: my-marketplace}
-```
-
-置き場所は3層で、下ほど優先する。**層はマージせず、見つかった最優先の1ファイルだけを使う。**
-
-1. personal: `$XDG_CONFIG_HOME/harness-plugins/dependencies.yml`（未設定時は`~/.config/harness-plugins/dependencies.yml`）
-2. repository: `<repo>/.harness-plugins/dependencies.yml`
-3. scope: `<repo>/.harness-plugins/scopes/<入口playbook>/dependencies.yml`
-
-値に書けるのは`plugin`と`marketplace`だけで、**pathやversionは書けない。** 差し替え先はmarketplace経由（installed cache、同一repository、開発時の`HARNESS_PLUGIN_DEV_ROOTS`）で解決でき、manifestの`metadata.harness.implements`にその契約IDを宣言しているpluginでなければならない。宣言が無ければ`[error:binding-not-implemented]`で停止する。playbook側の`requires`は書き換えない。
-
-入口が選んだ束縛はrun専用のlockへ固定して子へ渡す。同じ実行の中で実体が食い違うことはなく、実行中に`dependencies.yml`を書き換えても、そのrunの解決は変わらない。
-
-### explainの読み方
-
-`scripts/prepare.sh`は`--explain`を引数に取らない。**explainは常にstderrへ出る。** stdoutは解決済みYAMLの絶対path1行だけなので、解決の内訳（選んだ設定層、依存の実体、束縛の出どころ、静的に解けた工程入力）はstderrで読む。`--explain`のような未知optionを渡すとusageを表示してexit 2で止まる。
-
-### 破壊的変更と移行
-
-公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
-
-収集は追記archiveであり、現行snapshotとの完全同期を保証しない。Slack編集は旧本文をversionsへ保持し、明示削除はtombstoneにする。取得結果に無いだけで保存物を削除しない。会議の日付変更・transcript省略でも旧fileを履歴として保持し、最新台帳pathと現行partsを参照する。保存directory全体を排他し、中断された本文・台帳の更新は次回check/write/appendでjournalから回復する。台帳の構文またはschema破損は自動スキップせず停止するため、旧データは退避して内容を確認してから移行する。
+- marketplaceの `source` を `./plugins` から `./plugins/collect-and-digest` へ、公開入口を `plugins/collect-and-digest/skills/<入口>/` へ統一した。配置変更はinstall identityを変えるため、release時にmajor bumpが要る。
+- 収集skill `slack-collect` / `meeting-collect` / `session-collect` を公開入口 `collect-slack` / `collect-notes` / `collect-sessions` へ昇格した（利用者が直接依頼する仕事）。`digest` の内部skill `make-digest` / `list-digests` は `digest` へ畳んだ（照会は依頼文で判定する）。`session-digest` は `make-session-digest` になり、`steps[].skill: collect-sessions` は同packageの公開入口を指す。
+- 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `finalize.sh`）、4層の設定探索、`config/defaults.yml` へのfallback、入口ごとのnested manifestを撤去した。各scriptは1層の設定fileを直接読み、schemaを検査し、相対pathをrepository root（設定fileの2つ上）基準で解決する。`collect-slack` のMCP実行計画は `scripts/message.py plan` が設定から決定論的に組み立てる。
+- `digest.config.yml` は `playbook.yml` の複製ではなく、`version` / `sources` / `labels` / `output` / `digests` だけを持つ。工程は上書きできない。
+- 外部依存の実行時解決（`dependencies.yml` による束縛、`--explain`）は撤去した。

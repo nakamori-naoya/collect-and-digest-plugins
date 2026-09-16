@@ -3,7 +3,7 @@
   "cases": [
     {
       "id": "collect-and-digest-plugins-contract",
-      "skill": "../plugins/skills/collection/slack-collect/SKILL.md",
+      "skill": "../plugins/collect-and-digest/skills/collect-slack/SKILL.md",
       "messages": [
         {
           "role": "tool",
@@ -34,8 +34,8 @@
       ],
       "stage": "after-prepare-and-required-reference-read",
       "resources": [
-        "../plugins/skills/collection/slack-collect/references/targets.md",
-        "../plugins/skills/collection/slack-collect/references/workflow.md"
+        "../plugins/collect-and-digest/skills/collect-slack/references/targets.md",
+        "../plugins/collect-and-digest/skills/collect-slack/references/workflow.md"
       ]
     }
   ]
