@@ -4,7 +4,7 @@
 # 収集内容の妥当性、要約の品質、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-# 保守toolの正本は兄弟checkoutの harness-tools。無ければ止まる（fixtureで代用しない）。
+# 保守toolの参照元は兄弟checkoutの harness-tools。無ければ止まる（fixtureで代用しない）。
 TOOLS="$ROOT/../harness-tools/tools"
 [ -d "$TOOLS" ] || { echo "[error] 兄弟 checkout harness-tools が無い: $TOOLS" >&2; exit 2; }
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/collect-and-digest-validation.XXXXXX") || exit 2
@@ -55,7 +55,7 @@ for entry in "${ENTRIES[@]}"; do
     pass "$entry: 禁止参照形と旧runtime呼び出しが無い"
   fi
 done
-# 型は入口ごとに固定: digest は period-digest、make-session-digest は agent-session-digest（型の正本は write-doc の template）。
+# 型は入口ごとに固定: digest は period-digest、make-session-digest は agent-session-digest（型の基準資料は write-doc の template）。
 for entry in digest make-session-digest; do
   dir="$ENTRY_DIR/$entry"
   pb=$(yq -o=json -I=0 '.' "$dir/playbook.yml")
@@ -88,7 +88,7 @@ while IFS= read -r script; do python3 -m py_compile "$script" || failed=1; done 
 python3 -m unittest discover -s "$ROOT/tests" -p test_collection_integrity.py && pass "collection_store / 設定schema / 置き場解決の単体検査" || fail "tests/test_collection_integrity.py"
 
 # make-session-digest material.py: 索引からmaterialを標準出力へ返す。fileは書かない。
-# 正本: 索引のschema（REQUIRED_INDEX_KEYS）。入力: --day-index の絶対pathと --date。正規化: JSONL行ごとのparse。
+# 基準資料: 索引のschema（REQUIRED_INDEX_KEYS）。入力: --day-index の絶対pathと --date。正規化: JSONL行ごとのparse。
 # 合格述語: 対象日の完成済みroot sessionをrecordsにし、artifact.material / input_hash / target_date / session_count を返す。
 # 診断: 標準出力の JSON error、exit 2 / 4。正例: 1 root session。反例: provisional、原文欠落、相対path。
 # 境界例: 対象日に0件（exit 4）、旧形の --out-dir / --cleanup 引数（argparseで拒否）、fileが生成されないこと。
