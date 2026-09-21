@@ -13,7 +13,7 @@ description: 収集物（議事録・Slack・セッション索引など日付di
 - `references`: 任意。追加で従う資料の絶対path配列。手順の最初に読み、`write-doc` の `references` へそのまま渡す。プロジェクト固有の規約や文脈は、対象repositoryのAGENTS.md / CLAUDE.mdとこの入力で渡される。
 - 設定file: `<repository root>/.harness-plugins/digest.config.yml`。1層で必須。keyは `version: 1`、`sources`（`{dir: <相対または絶対path>}` の配列。相対はrepository root基準）、`labels`（文字列配列）、`output`（`dir` と `format: markdown`）、`digests`（`name` / `period`（daily / weekly / monthly）/ `type`（`period-digest` だけ）/ `prompt` と任意の `labels` / `include_parts` / `output`）。工程（`steps`）は上書きできない。記入例は [`assets/digest.config.example.yml`](assets/digest.config.example.yml)。読み取りtoolの契約は手順1にある。
 
-同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正本にする。
+同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正式な定義にする。
 
 ## 判断基準
 

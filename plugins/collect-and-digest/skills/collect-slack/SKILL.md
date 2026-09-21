@@ -5,7 +5,7 @@ description: 設定timezone上の対象日（既定は今日）のSlackを集め
 
 # collect-slack
 
-対象日に属するSlackの発言を、原文のまま `slack_dir/<対象日>/` へ落とす。正本は常にSlackであり、ここに置くのはその写しで、Slackへ書き戻す動線は作らない。抽出、要約、意味的な伏せ字はしない。例外は一つだけで、既知の認証情報フォーマット（PEM秘密鍵、GCPサービスアカウントJSON、AWS Access Key IDなど）に機械的に一致したメッセージは、`collect.credential_redaction` が `true` のときその場で本文を `permalink` と固定注記へ差し替えて収集を続ける（[保存工程](references/workflow.md)）。
+対象日に属するSlackの発言を、原文のまま `slack_dir/<対象日>/` へ落とす。一次データは常にSlackであり、ここに置くのはその写しで、Slackへ書き戻す動線は作らない。抽出、要約、意味的な伏せ字はしない。例外は一つだけで、既知の認証情報フォーマット（PEM秘密鍵、GCPサービスアカウントJSON、AWS Access Key IDなど）に機械的に一致したメッセージは、`collect.credential_redaction` が `true` のときその場で本文を `permalink` と固定注記へ差し替えて収集を続ける（[保存工程](references/workflow.md)）。
 
 ## 入力
 

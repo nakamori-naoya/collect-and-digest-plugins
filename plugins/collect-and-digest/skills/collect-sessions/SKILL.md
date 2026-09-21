@@ -5,7 +5,7 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 
 # collect-sessions
 
-対象日に活動したClaude Code / Codexセッションを発見し、正本への参照と決定的メタデータだけを非公開の `state_dir` へ保存する。原文、プロンプト、応答、tool入出力、system promptは複製しない。要約は別の仕事である。
+対象日に活動したClaude Code / Codexセッションを発見し、参照元への参照と決定的メタデータだけを非公開の `state_dir` へ保存する。原文、プロンプト、応答、tool入出力、system promptは複製しない。要約は別の仕事である。
 
 ## 入力
 
@@ -15,7 +15,7 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 ## 判断基準
 
 - **停止条件か、スキップか。** enabledなrootの欠落、中間の真にparse不能なJSONL、上限超過、索引破損、保存先の安全違反は止まる。末尾の書きかけだけは `provisional` として扱う。対象schema外のfile（sessionIdを持たないWorkflow journal.jsonlなど）や、sessionIdはあるが有効なturn / timestampをまだ持たない空セッションは止まらず、1件だけ理由付きでスキップして走査を続ける（`counts.unrecognized`、私的な `artifact.skipped_log`）。
-- **原文を写していないか。** 索引に入るのは正本への参照と決定的メタデータだけである。形式、privacy、更新規則は[セッション形式と収集契約](references/workflow.md)に従う。
+- **原文を写していないか。** 索引に入るのは参照元への参照と決定的メタデータだけである。形式、privacy、更新規則は[セッション形式と収集契約](references/workflow.md)に従う。
 - **0件でも報告するか。** 0件でも `counts` を明示し、黙って終わらない。
 
 ## 手順

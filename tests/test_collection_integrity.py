@@ -161,8 +161,8 @@ class CollectionIntegrity(unittest.TestCase):
         with patch.object(store.subprocess, 'run', return_value=allowed):
             slack.guard_dir(str(self.root))
 
-    # 正本: digest READMEの「完全な設定」例と公開playbook固有validator。
-    # 正本: 各入口の assets/*.config.example.yml と scripts の validate_config。
+    # 基準資料: digest READMEの「完全な設定」例と公開playbook固有validator。
+    # 基準資料: 各入口の assets/*.config.example.yml と scripts の validate_config。
     # 入力: 記入例YAMLをyqでJSONへ変換したもの。合格述語: 記入例を各scriptのvalidate_configが受理する。
     # 反例: keyの追加・欠落・型違い・許容外の値を拒否する。境界例: digestの空sourcesは構造上合法（material.py listで停止）。
     # 意味評価: 設定値が利用者の収集目的に合うかは本文を読む。
@@ -203,7 +203,7 @@ class CollectionIntegrity(unittest.TestCase):
         empty_sources['sources'] = []
         digest.validate_config(empty_sources, 'boundary')
 
-    # 正本: 1層の設定fileの置き場規則。入力: <repo>/.harness-plugins/<entry>.config.yml。
+    # 基準資料: 1層の設定fileの置き場規則。入力: <repo>/.harness-plugins/<entry>.config.yml。
     # 合格述語: 相対 slack_dir / notes_dir がrepository root（設定fileの2つ上）基準の絶対pathへ解決される。
     def test_relative_dirs_resolve_against_repository_root(self):
         repo = self.root / 'repo'
@@ -219,7 +219,7 @@ class CollectionIntegrity(unittest.TestCase):
         self.assertEqual([op['id'] for op in slack.load_config(str(repo / '.harness-plugins/collect-slack.config.yml'))['collection_plan']['operations']][:2],
                          ['compute-target-range', 'resolve-authenticated-user'])
 
-    # 正本: lib/harness_config.py の契約と各入口の validate_config。
+    # 基準資料: lib/harness_config.py の契約と各入口の validate_config。
     # 入力: `config.py check|read --repo <path>`（collect-sessions は引数なしで XDG_CONFIG_HOME）。stdinは使わない。
     # 正規化: git rev-parse --show-toplevel で git root を解決し、<root>/.harness-plugins/<entry>.config.yml を yq でJSON化する。
     # 合格述語: check は exit 0 と {"status":"ok","config":<絶対path>}、read は exit 0 と {"config","values"}（values は top-level key をそのまま）。

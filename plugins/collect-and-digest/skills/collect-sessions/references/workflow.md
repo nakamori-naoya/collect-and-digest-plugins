@@ -2,7 +2,7 @@
 
 ## 境界
 
-収集物は非公開索引であり、会話本文の写しではない。`source_ref.path`は要約など後続処理が正本をその場で読むための参照で、stdoutや公開資料へ出さない。
+収集物は非公開索引であり、会話本文の写しではない。`source_ref.path`は要約など後続処理が参照元をその場で読むための参照で、stdoutや公開資料へ出さない。
 
 Claude Codeは`sessionId`を主セッションのnative IDとし、subagentは`sessionId:agentId`で区別する。Codexは`session_meta.payload.id`をrollout固有IDとして使い、`session_id`を主キーにしない。
 

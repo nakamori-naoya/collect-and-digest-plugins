@@ -1,5 +1,5 @@
 # digest — 収集物から期間ダイジェストを1本作る。
-# 収集元と実行定義は <repo>/.harness-plugins/digest.config.yml（利用者設定）が持ち、工程順はこのYAMLが正本。
+# 収集元と実行定義は <repo>/.harness-plugins/digest.config.yml（利用者設定）が持ち、工程順の正式な定義はこのYAMLである。
 # 書くこと自体は write-doc の公開契約へ委ねる。
 version: 2
 name: digest

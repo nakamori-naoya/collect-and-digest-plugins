@@ -10,7 +10,7 @@ check: schema検査だけ。exit 0、標準出力に {"status":"ok","config":"<�
 read : schema検査後、exit 0、標準出力に {"config":"<絶対path>","values":{設定fileのtop-level keyと値をそのまま}}
 失敗 : exit 2、標準出力に {"error":"<診断>","config":"<絶対path>"|null（not_a_git_repository のとき）,"reason":"policy_missing"|"schema_violation"|"not_a_git_repository"}
 
-schemaの正本は同じdirectoryの message.py の validate_config で、このtoolはそれを共有する。
+schemaの正式な定義は同じdirectoryの message.py の validate_config で、このtoolはそれを共有する。
 """
 import sys
 from pathlib import Path
