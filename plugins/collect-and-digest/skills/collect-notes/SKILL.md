@@ -5,7 +5,7 @@ description: Notion / Google Docsの議事録のうち、設定timezone上の対
 
 # collect-notes
 
-対象日に属する議事録を、原文のまま `<notes_dir>/<対象日>/` へ落とす。正本は常に上流（Notion / Google Docs）であり、ここに置くのはその写しで、書き戻す動線は作らない。抽出、要約、伏せ字、truncationはしない。資料化やチケット化は別の仕事である。
+対象日に属する議事録を、原文のまま `<notes_dir>/<対象日>/` へ落とす。一次データは常に上流（Notion / Google Docs）であり、ここに置くのはその写しで、書き戻す動線は作らない。抽出、要約、伏せ字、truncationはしない。資料化やチケット化は別の仕事である。
 
 ## 入力
 

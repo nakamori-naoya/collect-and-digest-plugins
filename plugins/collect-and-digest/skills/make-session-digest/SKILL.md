@@ -11,7 +11,7 @@ description: collect-sessionsの非公開索引を使い、対象日に活動し
 
 - `user_input`: 対象日の指定を含む依頼。指定が無ければ `output.timezone` の当日。
 - `references`: 任意。追加で従う資料の絶対path配列。手順の最初に読み、`write-doc` の `references` へ加える。プロジェクト固有の規約や文脈は、対象repositoryのAGENTS.md / CLAUDE.mdとこの入力で渡される。
-- 同じdirectoryの [`playbook.yml`](playbook.yml) の `output`（`dir` / `format` / `timezone` / `subagents`）と `contract`（`session_item_fields` / `document_type` / `output_name`）。同じagentがこのYAMLを読み、`steps` の宣言順を実行順の正本にする。
+- 同じdirectoryの [`playbook.yml`](playbook.yml) の `output`（`dir` / `format` / `timezone` / `subagents`）と `contract`（`session_item_fields` / `document_type` / `output_name`）。同じagentがこのYAMLを読み、`steps` の宣言順を実行順の正式な定義にする。
 - 収集済みの日次索引: 同じpackageの公開skill `collect-sessions` が `state_dir` に作る。その設定は利用者の `collect-sessions.config.yml` にあり、この入口は読まない。
 
 ## 判断基準

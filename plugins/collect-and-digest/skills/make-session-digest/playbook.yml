@@ -1,5 +1,5 @@
 # make-session-digest — 対象日に活動したエージェントセッションの日次要約を1本作る。
-# 収集は同じpackageの公開skill collect-sessions、保存は write-doc の公開契約へ委ねる。工程順はこのYAMLが正本。
+# 収集は同じpackageの公開skill collect-sessions、保存は write-doc の公開契約へ委ねる。工程順の正式な定義はこのYAMLである。
 version: 2
 name: make-session-digest
 description: 対象日に活動したエージェントセッションの日次要約を作る
