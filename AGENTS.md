@@ -9,3 +9,7 @@
 `SKILL.md`、`references/`、`playbook.yml` に実行基盤の配管（`${.`マクロ、同期block、環境変数によるroot解決、設定解決scriptの実行指示、`prepare.sh` / `resolve.sh` の対）を書かない。設定は1層の設定file（repositoryの `.harness-plugins/<入口>.config.yml`、`collect-sessions` だけ利用者の `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml`）を、各入口の `scripts/config.py check|read`（stdin不要、pathはtoolが固定、stdoutにJSON 1文書、失敗はexit 2と `reason`）が読んでschemaを検査する。schemaの正式な定義は各入口のtoolの `validate_config` で、`config.py` はそれを共有する。同梱既定へのfallbackと層の探索を置かない。`assets/<入口>.config.example.yml` は記入例であり既定値ではない。
 
 変更後は `bash scripts/validate.sh` と `bash /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/scripts/validate.sh /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/collect-and-digest-plugins` を実行する。
+
+## 検査スクリプトは、意味が一意に決まることだけを判定する
+
+このrepositoryの検査スクリプト（validate、lint、verify、checkなど、名前を問わない）が判定してよいのは、ファイルや見出しの有無、識別子や版の一致、宣言と配置の対応、禁止された書き方の有無のように、入力と基準資料から意味が決定論的に一意に決まることだけである。読んで解釈しないと決まらないことや、件数や語の出現のような品質の代わりの指標は判定せず、エージェントが読んで評価する（意味評価）。判定が一意に決まることを宣言できない検査は作らず、詳しい条件は `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.agents/rules/deterministic-validation.md` に従う。
