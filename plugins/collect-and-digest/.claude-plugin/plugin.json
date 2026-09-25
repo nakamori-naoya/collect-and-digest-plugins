@@ -14,8 +14,7 @@
   ],
   "metadata": {
     "harness": {
-      "marketplace": "collect-and-digest",
-      "contractVersion": 1
+      "marketplace": "collect-and-digest"
     }
   }
 }
