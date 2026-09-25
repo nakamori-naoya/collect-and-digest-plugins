@@ -39,12 +39,10 @@ collect:
 |---|---|
 | チャンネルの読み取り | `slack_read_channel` |
 | スレッドの読み取り | `slack_read_thread` |
-| 検索（自分に関わるメンション） | `slack_search_public_and_private`（無ければ `slack_search_public`） |
+| 検索（自分に関わるメンション） | `slack_search_public_and_private` |
 | 発言者の解決 | `slack_read_user_profile` |
 | リンクの取得 | 各メッセージの `permalink` |
 | チャンネル名の解決 | `slack_search_channels` |
-
-この skill は Slack を読むだけなので、`slack_send_message` のような送信系のツールは使わない。`permalink` が取れないメッセージは、元の発言へ戻れないので収集しない。
 
 ## 対象日で絞る
 
@@ -67,8 +65,6 @@ collect:
     - id: C072N1VPETD
       label: "#dev"                    # 表示名を付けたい場合
 ```
-
-チャンネル ID が分からないときは、`slack_search_channels` で解決してから使う。推測で作った ID は、別のチャンネルを読むか、何も読めないかのどちらかになる。
 
 1チャンネルを1バケットにし、バケット名はチャンネル ID にする。検索で見つけた親メッセージは `slack_read_thread` で返信まで辿り、返信には `thread_ts` を入れて同じバケットへ入れる。
 
