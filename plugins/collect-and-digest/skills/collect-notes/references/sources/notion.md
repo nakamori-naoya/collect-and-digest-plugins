@@ -7,7 +7,7 @@
 | 一覧 | `notion-query-meeting-notes` |
 | 本文 | `notion-fetch`（議事録ページ ID を渡す） |
 
-`notion-query-meeting-notes` は既定で**認証ユーザーが参加者または作成者の議事録**を返す。current-user のフィルタを足す必要はない。最大50件。
+`notion-query-meeting-notes` は既定で、認証ユーザーが参加者または作成者である議事録を返す。current-user のフィルタを足す必要はない。最大50件。
 
 ## 対象日で絞る
 
@@ -21,13 +21,13 @@
 | `url` | ページ URL |
 | `title` | 会議名 |
 | `occurred_at` | 議事録の日時プロパティ。無ければ `created_time` |
-| `attendees` | attendees プロパティ（**上流の生値**。内外の分類はしない） |
+| `attendees` | attendees プロパティの上流の生値。内外の分類はしない |
 | `source_updated_at` | `last_edited_time` |
 | `props` | DB プロパティの生ダンプ |
 
 ## 本文
 
-`notion-fetch` の返す markdown を**そのまま**本文にする。見出しの整形も要約もしない。
+`notion-fetch` の返す markdown を、そのまま本文にする。見出しの整形も要約もしない。
 
 ## 落ちるもの（`omitted` へ記録する）
 
@@ -39,6 +39,6 @@
 
 ## 既知の制約
 
-- **添付・画像の署名付き URL は約1時間で失効する。** このskillはasset保存を実装していない。リンクだけを残し、`omitted: [images]`として表明する。
+- 添付と画像の署名付き URL は約1時間で失効し、このskillはassetを保存しない。そのためリンクだけを残し、`omitted: [images]`として表明する。
 - 子ページは再帰が非有界なので追わない。子ページ自身が議事録なら、それは自分のクエリで独立に収集される。
-- MCP が未接続なら収集をスキップし、理由を報告に残す。**止めない。**
+- MCP が未接続なら、Notion の収集だけをスキップして理由を報告に残し、ほかのsourceの収集を続ける。
