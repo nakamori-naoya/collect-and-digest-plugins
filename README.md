@@ -22,7 +22,7 @@
 | Slackの発言を対象日で集める | `collect-slack` | `<repo>/.harness-plugins/collect-slack.config.yml` |
 | Claude Code / Codexのsessionを非公開索引にする | `collect-sessions` | `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml` |
 | 複数の収集物から期間資料を作る（定義と素材数の照会も） | `digest` | `<repo>/.harness-plugins/digest.config.yml` |
-| session索引から日次の短い記録を作る | `make-session-digest` | 無し（入口の `playbook.yml` の `output` / `contract`） |
+| session索引から日次の短い記録を作る | `make-session-digest` | 無し（保存先は依頼の `output_directory` で受け取る） |
 
 設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。keyの一覧と型は各 `SKILL.md` の入力にある。読み取りは各入口の `scripts/config.py check|read`（repository scopeは `--repo <repository配下のpath>`、`collect-sessions` は引数なし）だけが行い、pathはtoolが固定する。失敗は終了code 2と標準出力のJSON `reason`（`policy_missing` / `schema_violation` / `not_a_git_repository`）で分かる。`digest` と `make-session-digest` は任意入力 `references`（追加で従う資料の絶対path配列）を持ち、`write-doc` へそのまま渡す。
 
