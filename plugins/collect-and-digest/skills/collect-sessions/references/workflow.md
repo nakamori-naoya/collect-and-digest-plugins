@@ -24,7 +24,7 @@ Claude Codeは`sessionId`を主セッションのnative IDとし、subagentは`s
 
 「構造的に壊れている（parse不能）」と「認識できるが対象schema外」「有効なturn/timestampがまだ0件なだけの正常な空セッション」は区別する。
 
-- **parse不能なJSONL**（`json.loads`が失敗する行）は、既存どおりスキャン全体を止める。1件でも紛れ込んだら停止するのが安全側の設計であり、これは変えない。
+- **parse不能なJSONL**（`json.loads`が失敗する行）は、スキャン全体を止める。1件でも紛れ込んだら止めるのは、安全側に倒す設計である。
 - **対象schema外**（例: `subagents/workflows/wf_*/journal.jsonl`のようなWorkflowツール由来の別形式で、Claude sessionId自体を持たない）は、そのファイル1件だけをスキップして走査を続ける。
 - **有効な空セッション**（Claude sessionIdはあるが、top-levelのai-title/agent-name行だけでturn/timestampがまだ1件もない）も、そのファイル1件だけをスキップして走査を続ける。
 
