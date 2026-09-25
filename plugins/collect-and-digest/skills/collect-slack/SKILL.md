@@ -5,44 +5,22 @@ description: 設定timezone上の対象日（既定は今日）のSlackを集め
 
 # collect-slack
 
-対象日に属するSlackの発言を、原文のまま `slack_dir/<対象日>/` へ落とす。一次データは常にSlackであり、ここに置くのはその写しで、Slackへ書き戻す動線は作らない。抽出、要約、意味的な伏せ字はしない。例外は一つだけで、既知の認証情報フォーマット（PEM秘密鍵、GCPサービスアカウントJSON、AWS Access Key IDなど）に機械的に一致したメッセージは、`collect.credential_redaction` が `true` のときその場で本文を `permalink` と固定注記へ差し替えて収集を続ける（[保存工程](references/workflow.md)）。
+対象日に属するSlackの発言を、原文のまま `slack_dir/<対象日>/` へ写す。元の記録は常にSlackにあり、ここに置くのはその写しである。
 
-## 入力
+## Slackは読むだけにする
 
-- 対象日: 利用者が `--date 2026-08-12` のように指定した日。指定が無ければ設定の `timezone` での当日。directoryのキーは対象日であって起動日ではない。
-- 設定file: `<repository root>/.harness-plugins/collect-slack.config.yml`。1層で必須、同梱既定へのfallbackは無い。keyは `version: 1`、`slack_dir`（相対ならrepository root基準）、`timezone`、`collect.channels`（`all` またはチャンネルの配列）、`collect.targets.{channel_messages, direct_mentions, group_mentions, authored_threads}`（boolean）、`collect.groups`（`id` を持つobjectの配列）、`collect.max_bytes`、`collect.credential_redaction`。記入例は [`assets/collect-slack.config.example.yml`](assets/collect-slack.config.example.yml)。読み取りtoolの契約は手順1にある。
+この入口はSlackを読むだけで、送信、リアクション、canvasやlistの更新のような書き込みの tool は使わない。写しを作る仕事で、利用者の許可なく他人の目に触れる場所を変えないためである。写すだけにし、抽出、要約、意味で判断した伏せ字はしない。例外は、既知の認証情報の形（PEM秘密鍵、GCPサービスアカウントJSON、AWS Access Key IDなど）に機械的に一致した発言だけで、`collect.credential_redaction` が `true` なら `message.py append` がその本文を差し替える（[保存工程](references/workflow.md)）。
 
-## 判断基準
+## 取る範囲は設定が決め、黙って変えない
 
-- **計画にある操作か。** 実行するMCP操作は `scripts/message.py plan` が設定から組み立てた `collection_plan.operations` だけである。計画に無い操作を足さず、削らず、並べ替えない。
-- **取る前に判定したか。** バケットごとに `message.py check` の `decision` を見る。`new` / `updated` は本文を取得して書く、`unchanged` は何もしない、`recheck` は最新tsの一致に関係なく対象日全範囲を再取得して編集を突き合わせる。
-- **MCPが使えない対象か。** MCP未接続・権限不足はその操作だけをスキップして理由を記録し、収集全体を止めない。
-- **0件でも報告するか。** 0件は「0件だった」と報告し、黙って終わらない。
+実行するMCP操作は、`scripts/message.py plan` が設定から組み立てた `collection_plan.operations` だけである。計画に無い操作を足さず、削らず、並べ替えない。チャンネルIDが分からなければ `slack_search_channels` で解決し、推測で作らない。計画の tool が使えず、狭い範囲の tool で代えたとき（たとえば `slack_search_public_and_private` の代わりに `slack_search_public`）は、取れなかった範囲を報告に書く。MCP未接続や権限不足の操作は、その操作だけを飛ばして理由を記録し、残りを続ける。`permalink` の取れない発言は、元へ戻れないので写さない。どう取るかの詳細は[対象別の収集方法](references/targets.md)にある。
 
 ## 手順
 
-1. **設定を読み、MCP実行計画を組む。** 設定の読み取りは `python3 scripts/config.py check --repo <repository配下のpath>` / `python3 scripts/config.py read --repo <同>` だけで行う。設定fileの置き場はtoolが `<repositoryのgit root>/.harness-plugins/collect-slack.config.yml` に固定する（1層、fallback無し。呼び手はpathを選ばない）。stdinは使わない。`check` はschema検査だけを行い、終了code `0` で標準出力に `{"status":"ok","config":"<絶対path>"}` を返す。`read` はschema検査後に終了code `0` で `{"config":"<絶対path>","values":{<設定fileのtop-level keyと値をそのまま>}}` を返す。失敗は終了code `2` で標準出力に `{"error":"<診断>","config":"<絶対path>","reason":<理由>}` を返し、理由は `policy_missing`（fileが無い）/ `schema_violation`（keyの過不足・型違い・許容外の値・読めないfile）/ `not_a_git_repository`（`--repo` がgit repositoryでない。このとき `config` は `null`）。`2` なら止まる。 続けて `python3 scripts/message.py plan --config <readが返したconfigの絶対path>` を実行する。出力は `slack_dir`（絶対path）、`timezone`、`collection_plan` を持つ標準出力のJSON、終了codeは `0` = 計画を返した、`2` = 引数の不備（診断は標準出力のJSON `error`）。以降の `message.py` の `--config` にも同じ絶対pathを渡す。
-2. **対象日を決める。** 指定が無ければ `timezone` の当日を使う。
-3. **計画を配列順に実行する。** `{target_date}`、`{target_start_ts}`、`{target_end_ts}` を対象日から確定し（`scripts/date-range.py --date <YYYY-MM-DD> --timezone <timezone>`。標準出力のJSONで開始・終了tsを返す）、本人解決の出力で `{authenticated_user_id}` を置換する。`inputs` は指定された出力を合流し、`foreach` はproducer付き参照の1件ごとに実行する。ツールと引数の意味は[対象別の収集方法](references/targets.md)に従う。
-4. **取る前に判定する。** `python3 scripts/message.py check --config <設定file> --operation-id <planのoperation.id> --bucket <planのbucket> --target-date <YYYY-MM-DD> --latest-ts <そのバケットの最新ts>` を実行する。出力は `decision` を持つ標準出力のJSON、終了codeは `0` = 判定した、`2` = 引数・設定・計画にないoperationの不備。
-5. **書き込む。** 取得した発言を1行1 JSONの一時fileへ書き、[保存工程](references/workflow.md)の `message.py append` へ渡す。scriptが重複排除、整列、front matter、台帳更新を行う。終了codeは `0` = 保存した、`2` = 不備（診断は標準出力のJSON `error`）。`2` ならそのバケットの保存を成功扱いにしない。
-6. **報告する。** 対象日、バケットごとの新規追加 / 総数、`credential_redacted` の合算件数、スキップした対象と理由（MCP未接続、権限なし、設定で無効）、保存先 `slack_dir/<対象日>/` を報告する。
+1. **設定を読み、計画を組む。** `python3 scripts/config.py read --repo <repository配下のpath>` で `<git root>/.harness-plugins/collect-slack.config.yml` を読む。設定が無いか形が違えば、終了code `2` と診断が返るので止まる。記入例は [`assets/collect-slack.config.example.yml`](assets/collect-slack.config.example.yml) にある。続けて `python3 scripts/message.py plan --config <readが返したconfig>` で計画を得る。
+2. **対象日を決める。** 指定が無ければ設定の `timezone` の当日にし、報告に書く。範囲の ts は `scripts/date-range.py --date <YYYY-MM-DD> --timezone <timezone>` で得る。
+3. **計画を順に実行する。** バケットごとに、取る前に `message.py check` の `decision` を見る。`new` と `updated` は取得して書き、`unchanged` は何もせず、`recheck` は対象日の全範囲を取り直して編集を突き合わせる。
+4. **書く。** 取得した発言を1行1 JSONの一時fileにし、[保存工程](references/workflow.md)の `message.py append` へ渡す。重複排除、整列、front matter、台帳の更新はscriptが行う。`check` か `append` が `2` を返したバケットは、保存済みとして扱わない。
+5. **報告する。** 対象日、見たワークスペース、バケットごとの新規と総数、`credential_redacted` の合計、飛ばした対象とその理由、保存先を報告する。0件でも0件と書く。
 
-保存契約は追記archiveである。各収集実行で指定対象日の全範囲を再取得し、スレッドは取得可能な全返信を再取得する。指定していない過去日は自動更新しない。同じtsの編集は `versions` へ旧本文を保持し、明示的な削除通知だけ `deleted=true` として収集済み本文を残す。取得結果に無いことを削除と推定しない。本文・台帳は保存directory全体を排他し、途中中断は次回の check / append でjournalを再適用してから処理する。
-
-## 停止条件
-
-止まるのは次の場合である。診断を報告し、保存済みと主張しない。
-
-- `config.py` が `2` を返した（`policy_missing` / `schema_violation` / `not_a_git_repository`）。
-- `message.py check` / `append` が `2` を返した。そのバケットを保存済みとして扱わない。
-
-次は止まらず、記録して進む。
-
-- MCP未接続・権限不足で取れない対象がある。その操作だけをスキップし、理由を報告に残して残りを続ける。
-- 対象日の指定が無い。設定の `timezone` の当日を対象日として進め、報告に対象日を明記する。
-- 取得結果に無いレコードがある。削除と推定せず保持し、APIが返さない編集・削除は反映できないことを報告に書く。
-
-## 出力
-
-保存先 `slack_dir/<対象日>/` の写しと台帳の更新。報告は手順6の項目を持つ。
+取得結果に無いことを削除と推定しない。明示的な削除通知だけを `deleted=true` にし、APIが返さない編集や削除は反映できないことを報告に書く。

@@ -20,12 +20,6 @@ Claude Codeは`sessionId`を主セッションのnative IDとし、subagentは`s
 
 同じsource IDのfingerprintが不変なら`unchanged`、変化したら`updated`。書き込み中の末尾不完全行は保存対象に含めず`provisional`とする。索引の壊れた行やJSONL中間の真にparse不能な行は無視せず停止する。
 
-## 認識できないセッションファイル
+## 飛ばしたfileの記録
 
-「構造的に壊れている（parse不能）」と「認識できるが対象schema外」「有効なturn/timestampがまだ0件なだけの正常な空セッション」は区別する。
-
-- **parse不能なJSONL**（`json.loads`が失敗する行）は、スキャン全体を止める。1件でも紛れ込んだら止めるのは、安全側に倒す設計である。
-- **対象schema外**（例: `subagents/workflows/wf_*/journal.jsonl`のようなWorkflowツール由来の別形式で、Claude sessionId自体を持たない）は、そのファイル1件だけをスキップして走査を続ける。
-- **有効な空セッション**（Claude sessionIdはあるが、top-levelのai-title/agent-name行だけでturn/timestampがまだ1件もない）も、そのファイル1件だけをスキップして走査を続ける。
-
-後者2つは黙って消えない。`counts.unrecognized`に件数を出し、`state_dir/skipped.jsonl`へ`{source, path, reason, observed_at}`を1行1件で記録する。この診断ログは`index.jsonl`の`source_ref.path`と同じ扱いの私的state情報であり、原文pathを標準出力の成功報告（`artifact` / `counts`）へは出さない。`artifact.skipped_log`はこのログ自身の保存先pathだけを示す。
+飛ばしたfileは `state_dir/skipped.jsonl` へ `{source, path, reason, observed_at}` を1行1件で記録する。このログは索引の `source_ref.path` と同じく私的な記録なので、原文のpathを成功の報告（`artifact` / `counts`）へ出さない。`artifact.skipped_log` が示すのはこのログ自身の置き場だけである。

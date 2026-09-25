@@ -11,7 +11,7 @@ description: 収集物（議事録・Slack・セッション索引など日付di
 
 - `user_input`: 「daily を作って」「今週のまとめ」「どんなdigestがあるか」のような依頼。
 - `references`: 任意。追加で従う資料の絶対path配列。手順の最初に読み、`write-doc` の `references` へそのまま渡す。プロジェクト固有の規約や文脈は、対象repositoryのAGENTS.md / CLAUDE.mdとこの入力で渡される。
-- 設定file: `<repository root>/.harness-plugins/digest.config.yml`。1層で必須。keyは `version: 1`、`sources`（`{dir: <相対または絶対path>}` の配列。相対はrepository root基準）、`labels`（文字列配列）、`output`（`dir` と `format: markdown`）、`digests`（`name` / `period`（daily / weekly / monthly）/ `type`（`period-digest` だけ）/ `prompt` と任意の `labels` / `include_parts` / `output`）。工程（`steps`）は上書きできない。記入例は [`assets/digest.config.example.yml`](assets/digest.config.example.yml)。読み取りtoolの契約は手順1にある。
+- 設定file: `<repository root>/.harness-plugins/digest.config.yml`。素材の置き場 `sources`、出力先 `output`、digestの定義 `digests`（`name`、`period`、`type: period-digest`、`prompt`）を持つ。記入例は [`assets/digest.config.example.yml`](assets/digest.config.example.yml) にある。
 
 同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正式な定義にする。
 
@@ -25,7 +25,7 @@ description: 収集物（議事録・Slack・セッション索引など日付di
 
 ## 手順
 
-1. **設定を読み、依頼を照合する（`interpret-request`）。** 設定の読み取りは `python3 scripts/config.py check --repo <repository配下のpath>` / `python3 scripts/config.py read --repo <同>` だけで行う。設定fileの置き場はtoolが `<repositoryのgit root>/.harness-plugins/digest.config.yml` に固定する（1層、fallback無し。呼び手はpathを選ばない）。stdinは使わない。`check` はschema検査だけを行い、終了code `0` で標準出力に `{"status":"ok","config":"<絶対path>"}` を返す。`read` はschema検査後に終了code `0` で `{"config":"<絶対path>","values":{<設定fileのtop-level keyと値をそのまま>}}` を返す。失敗は終了code `2` で標準出力に `{"error":"<診断>","config":"<絶対path>","reason":<理由>}` を返し、理由は `policy_missing`（fileが無い）/ `schema_violation`（keyの過不足・型違い・許容外の値・読めないfile）/ `not_a_git_repository`（`--repo` がgit repositoryでない。このとき `config` は `null`）。`2` なら止まる。 `values.digests` と `values.sources` を依頼と照合し、対象の `digest_name` と `reference_time` を確定する。以降の `material.py` / `doc-meta.py` の `--config` には `read` が返した `config` の絶対pathを渡す。
+1. **設定を読み、依頼を照合する（`interpret-request`）。** `python3 scripts/config.py read --repo <repository配下のpath>` で `<git root>/.harness-plugins/digest.config.yml` を読む。設定が無いか形が違えば（`type` が `period-digest` 以外も含む）、終了code `2` と診断が返るので止まる。`values.digests` と `values.sources` を依頼と照合し、対象の `digest_name` と `reference_time` を確定する。以降の `material.py` / `doc-meta.py` の `--config` には `read` が返した `config` の絶対pathを渡す。
 2. **素材を選ぶ（`material`）。** `python3 scripts/material.py list --config <設定file> --digest <digest_name> [--ref <YYYY-MM-DD>]` を実行する（明示期間は `--from` / `--to` の両方）。出力は `from` / `to` / `label` / `count` / `items` / `skipped` / `type` / `output` / `prompt` を持つ標準出力のJSON、終了codeは `0` = 選んだ、`2` = 設定不備・型違反・期間不正（診断は標準出力のJSON `error`）。`2` なら止まる。`count` が0なら手順3以降へ進まず報告する。
 3. **静的情報の骨格を作る（`meta`）。** `python3 scripts/doc-meta.py skeleton --config <設定file> --digest <digest_name> --from <from> --to <to> [--label <label>] [--materials <items JSON>]` を実行する。出力は参加者だけが空の骨格JSON、終了codeは `0` = 作った、`2` = 不備。参加者を埋め、資料の末尾へ人が読む表と同じ内容のJSON（Markdownは `<!-- doc-meta:begin ... doc-meta:end -->` のHTML comment）として載せるよう素材に含める。
 4. **資料化を委譲する（`document`）。** 公開Skill `write-doc:write-doc` へ次を直接渡す。`material` は選択した各素材を `{kind: file, path: <絶対path>}` にし、静的情報の骨格を `{kind: text, content: <本文>}` として加え、追加promptが空でなければ同じく `kind: text` の要素として加えたobject配列。`document_type` は `period-digest`。`output_directory` は `output.dir` をrepository root基準で解決した絶対path、`name` はdigest名と期間から決めた `.md` file名。同じpathの既存資料を更新すると利用者が明示した場合だけ、この2つに代えて `update_target` を渡す。入力の `references` があればそのまま `references` に渡す。返ったobjectの `status` が `completed` なら `path` を資料の絶対pathとして報告し、`failed` なら `reason` を報告して止まる。
@@ -35,7 +35,7 @@ description: 収集物（議事録・Slack・セッション索引など日付di
 
 止まるのは次の場合である。診断または `reason` を報告し、資料が書けたことにしない。
 
-- `config.py` が `2` を返した（`policy_missing` / `schema_violation` / `not_a_git_repository`。`type` が `period-digest` 以外もschema違反）。
+- `config.py` が `2` を返した。
 - 依頼がどの `digests[].name` にも当たらず、依頼の語からも一つに絞れない。候補を示して止まる（必須入力の欠落）。
 - 素材が0件。書かずに「その期間に素材が無い」と報告して終わる。
 - `write-doc` が `failed` を返した。

@@ -24,7 +24,7 @@
 | 複数の収集物から期間資料を作る（定義と素材数の照会も） | `digest` | `<repo>/.harness-plugins/digest.config.yml` |
 | session索引から日次の短い記録を作る | `make-session-digest` | 無し（保存先は依頼の `output_directory` で受け取る） |
 
-設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。keyの一覧と型は各 `SKILL.md` の入力にある。読み取りは各入口の `scripts/config.py check|read`（repository scopeは `--repo <repository配下のpath>`、`collect-sessions` は引数なし）だけが行い、pathはtoolが固定する。失敗は終了code 2と標準出力のJSON `reason`（`policy_missing` / `schema_violation` / `not_a_git_repository`）で分かる。`digest` と `make-session-digest` は任意入力 `references`（追加で従う資料の絶対path配列）を持ち、`write-doc` へそのまま渡す。
+設定fileは必須で、同梱の既定値へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して書く。設定が無いか形が違えば、各入口の `scripts/config.py read` が終了code 2と診断を返し、入口は止まる。収集の入口は上流を読むだけで、書き込みはしない。
 
 collectorは要約しない。`digest`は収集元を変更しない。この分離により、収集漏れの確認と要約内容のレビューを別々に行える。
 
@@ -128,12 +128,3 @@ bash scripts/validate.sh
 ## 保守tool
 
 保守用tool（doctor / lint-consumer-contract / evaluate-skills / release / test-hardening / validate-plugin-repository）の参照元は兄弟checkoutの `../harness-tools/` であり、このrepositoryは複製を持たない。`scripts/validate.sh` は `../harness-tools/tools/` の実在を確認してから呼び、無ければ止まる。CIの `validate.yml` も `harness-tools` を兄弟checkoutして `harness-tools/ci/validate.sh` を実行する。呼び方は `../harness-tools/README.md` にある。
-
-## 配置と設定の変更（2026-09-16）
-
-- marketplaceの `source` を `./plugins` から `./plugins/collect-and-digest` へ、公開入口を `plugins/collect-and-digest/skills/<入口>/` へ統一した。配置変更はinstall identityを変えるため、release時にmajor bumpが要る。
-- 収集skill `slack-collect` / `meeting-collect` / `session-collect` を公開入口 `collect-slack` / `collect-notes` / `collect-sessions` へ昇格した（利用者が直接依頼する仕事）。`digest` の内部skill `make-digest` / `list-digests` は `digest` へ畳んだ（照会は依頼文で判定する）。`session-digest` は `make-session-digest` になり、`steps[].skill: collect-sessions` は同packageの公開入口を指す。
-- 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `finalize.sh`）、4層の設定探索、`config/defaults.yml` へのfallback、入口ごとのnested manifestを撤去した。各scriptは1層の設定fileを直接読み、schemaを検査し、相対pathをrepository root（設定fileの2つ上）基準で解決する。`collect-slack` のMCP実行計画は `scripts/message.py plan` が設定から決定論的に組み立てる。
-- `digest.config.yml` は `playbook.yml` の複製ではなく、`version` / `sources` / `labels` / `output` / `digests` だけを持つ。工程は上書きできない。
-- 外部依存の実行時解決（`dependencies.yml` による束縛、`--explain`）は撤去した。
-- `make-session-digest` のmaterial file（run専用0700 directory、`material.py --out-dir` / `--cleanup`、`cleanup` 工程）を撤去した。`material.py` はmaterialを標準出力へ返し、同じagentが `write-doc` へ `kind: text` で渡す。
