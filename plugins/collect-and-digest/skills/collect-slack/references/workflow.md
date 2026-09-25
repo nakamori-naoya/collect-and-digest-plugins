@@ -21,13 +21,13 @@ python3 scripts/message.py append --config "$CONFIG" \
 
 ## 既知の認証情報フォーマットの自動redaction
 
-`collect.credential_redaction`（既定`true`）が有効なとき、`message.py append`は取得した各メッセージの本文を、既知の認証情報フォーマットに機械的・決定的に一致するかどうかだけで検査する。**解釈や見極めはしない。**
+`collect.credential_redaction`（既定`true`）が有効なとき、`message.py append`は取得した各メッセージの本文を、既知の認証情報フォーマットに機械的・決定的に一致するかどうかだけで検査する。本文の意味を読んで、機密かどうかを見極めることはしない。
 
 一致するフォーマット: PEM秘密鍵ヘッダー（`-----BEGIN ... PRIVATE KEY-----`）、GCPサービスアカウントJSONの鍵の組（`"type":"service_account"` + `"private_key"` + `"client_email"` が揃う）、AWS Access Key ID（`AKIA[0-9A-Z]{16}`）、GitHub/Slackのトークン形式。
 
-一致したメッセージは、その1件だけ本文を`[REDACTED: possible credential material — see original]`へ差し替え、`permalink`はそのまま残す（`permalink`は元々必須なので消えない）。**この判定は1メッセージ単位で完結する決定的処理であり、一致してもスキャンを止めず、利用者へ確認も求めない。** 他のメッセージ・他のバケットの処理はそのまま続く。
+一致したメッセージは、その1件だけ本文を`[REDACTED: possible credential material — see original]`へ差し替え、`permalink`はそのまま残す（`permalink`は元々必須なので消えない）。この判定は1メッセージの中で完結する決定的な処理なので、一致してもスキャンを止めず、利用者へ確認も求めず、他のメッセージと他のバケットの処理を続ける。
 
-これは禁止事項の「伏せ字をしない」に対する例外である。「これは機密っぽい」という**意味的な判断**はしない（検出漏れが必ずあり、偽の安心を売ることになるため）。ここでやるのは、固定フォーマットへの**文字列一致**だけであり、判断や停止を挟まない点で意味的redactionとは別物である。
+これは禁止事項の「伏せ字をしない」に対するただ一つの例外である。「これは機密っぽい」という意味の判断で伏せることはしない。意味の判断には検出漏れが避けられず、伏せたから安全だという誤った安心を与えるからである。ここで行うのは固定フォーマットへの文字列一致だけで、判断も停止も挟まないので、意味で伏せる処理とは別物である。
 
 一致したメッセージが1件以上あるバケットは、front matterの`redacted`が`true`になる。`message.py append`の出力`counts.credential_redacted`がそのバケットでの一致件数であり、SKILLはこれを合算して報告する。
 

@@ -24,7 +24,7 @@ mimeType = 'application/vnd.google-apps.document' and modifiedTime >= '<対象�
 | `url` | `viewUrl` |
 | `title` | ファイル名 |
 | `occurred_at` | 会議の開催日時。取れなければ `createdTime` |
-| `attendees` | 本文の参加者セクション（**上流の記載どおり**。補完・推定はしない） |
+| `attendees` | 本文の参加者セクションの記載どおり。補完も推定もしない |
 | `source_updated_at` | `modifiedTime` |
 
 ## 文字起こし
@@ -34,7 +34,7 @@ Gemini の議事録は、要約と文字起こしの入れ物が **同一 Doc �
 - 同一 Doc の別セクションなら、見出し境界で機械的に分割し、文字起こし側を `--transcript-file` へ渡す。
 - 別ファイルなら、そのファイルを独立に取得して `--transcript-file` へ渡す。
 
-**いずれの場合も、分割は構造境界での機械的な振り分けに限る。** 内容を読んで取捨選択したらそれは抽出であり、この skill の責務ではない。
+どちらの場合も、分割は構造の境界での機械的な振り分けに限る。内容を読んで取捨選択すると抽出になり、それはこの skill の責務ではないからである。
 
 `collect.transcript: false` の設定、または `--no-transcript` 指定のときは取得しない。その場合は `omitted` へ `transcript` を足す。
 
@@ -49,5 +49,5 @@ Gemini の議事録は、要約と文字起こしの入れ物が **同一 Doc �
 ## 既知の制約
 
 - markdown 変換でコメントのアンカー位置・セル結合は失われる。`fidelity: markdown-lossy` の宣言で表明する。
-- 録画がある場合は `recording_url` に URL だけを入れる。**動画本体は取らない。**
-- Drive が未接続なら収集をスキップし、理由を報告に残す。**止めない。**
+- 録画がある場合は `recording_url` に URL だけを入れ、動画本体は取らない。
+- Drive が未接続なら、Google Docs の収集だけをスキップして理由を報告に残し、ほかのsourceの収集を続ける。
