@@ -32,7 +32,7 @@ claude_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACK
 codex_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACKAGE/.codex-plugin/plugin.json")
 [ "$claude_identity" = "$codex_identity" ] && pass "両runtime manifestのidentity一致" || fail "両runtime manifestのidentity一致"
 jq -e '.skills==["./skills/collect-notes","./skills/collect-sessions","./skills/collect-slack","./skills/digest","./skills/make-session-digest"]
-       and .metadata.harness=={"marketplace":"collect-and-digest","contractVersion":1}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
+       and .metadata.harness=={"marketplace":"collect-and-digest"}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
   && pass "公開入口5つ、playbooks / internalPlugins / implements 無し" || fail "manifestの公開宣言"
 manifest_dirs=$(find "$ROOT/plugins" -type d \( -name '.claude-plugin' -o -name '.codex-plugin' \) | sed "s#^$ROOT/##" | sort | tr '\n' ' ')
 [ "$manifest_dirs" = "plugins/collect-and-digest/.claude-plugin plugins/collect-and-digest/.codex-plugin " ] \
