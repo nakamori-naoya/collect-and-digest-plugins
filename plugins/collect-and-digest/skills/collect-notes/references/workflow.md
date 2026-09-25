@@ -1,22 +1,6 @@
-# 議事録収集工程の詳細
+# 議事録の保存
 
-## 対象日の判定
-
-1. `occurred_at` を設定の `timezone` へ直した日付を使う。
-2. 取れない場合だけ、上流の作成日時を設定の `timezone` へ直して代替する。
-
-## checkの結果
-
-| decision | 動作 |
-|---|---|
-| `new` | 本文を取得して書く |
-| `updated` | 本文を取得して書き直す |
-| `unchanged` | 何もしない |
-| `recheck` | 本文を取得してhashで判定する |
-
-## write
-
-本文は原文Markdownのまま一時ファイルへ書く。front matterは自作しない。
+本文は原文Markdownのまま一時fileへ書き、front matterは自作しない。
 
 ```bash
 python3 scripts/note.py write --config "$CONFIG" \
@@ -27,14 +11,6 @@ python3 scripts/note.py write --config "$CONFIG" \
   [--recording-url <URL>] [--transcript-file /tmp/transcript.md] [--props <JSON>]
 ```
 
-## 報告
+文字起こしは既定で取る。コメント、添付、画像は既定で取らず、子ページはリンクだけ残す。`fidelity: markdown-lossy` と省いた項目を記録する。保存先はgit管理下に置かない。
 
-対象日、新規・更新・変更なしの件数とタイトル、スキップ理由、保存先を報告する。
-
-## 規律
-
-- 本文、日時、参加者、録画URL、DBプロパティを取れる範囲で保存する。推定しない。
-- 文字起こしは既定ON。コメント・添付・画像は既定OFF、子ページはリンクだけ残す。
-- 要約、伏せ字、truncationをしない。上限超過は部分保存せず停止する。
-- `fidelity: markdown-lossy` と省略項目を記録する。
-- git管理下への保存は拒否する。
+更新は本文と全metadataのhashで判断し、`source_updated_at` だけの更新も台帳とfront matterへ反映する。対象日が変わったときは旧日の主文書と文字起こしを履歴として残し、台帳の最新のpathを今の文書として扱う。
