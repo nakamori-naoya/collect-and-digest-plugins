@@ -9,7 +9,7 @@
       "name": "collect-and-digest",
       "source": "./plugins/collect-and-digest",
       "description": "収集とdigest作成のPlaybookを一括提供する",
-      "version": "6.1.1"
+      "version": "7.0.0"
     }
   ]
 }

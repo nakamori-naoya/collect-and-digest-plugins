@@ -21,7 +21,7 @@ ENTRIES=(collect-notes collect-sessions collect-slack digest make-session-digest
 
 # ── 配置と identity ──────────────────────────────────────────────────────
 for market in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
-  if jq -e '.name=="collect-and-digest" and (.plugins|length)==1 and .plugins[0].name=="collect-and-digest" and .plugins[0].version=="6.1.1"
+  if jq -e '.name=="collect-and-digest" and (.plugins|length)==1 and .plugins[0].name=="collect-and-digest" and .plugins[0].version=="7.0.0"
             and ((.plugins[0].source=="./plugins/collect-and-digest") or (.plugins[0].source=={"source":"local","path":"./plugins/collect-and-digest"}))' "$ROOT/$market" >/dev/null; then
     pass "$market identityとsource"
   else
