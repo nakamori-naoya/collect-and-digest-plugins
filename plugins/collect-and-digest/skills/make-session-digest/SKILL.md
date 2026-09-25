@@ -5,43 +5,25 @@ description: collect-sessionsの非公開索引を使い、対象日に活動し
 
 # make-session-digest
 
-セッション原文を複製せず、対象日に活動したセッションごとの不透明IDと短い要約を1本のMarkdownへ保存する。読み終えた利用者は、その日にどのセッションで何をしたかを後から仕事へ再利用できる粒度で振り返れる。
+セッションの原文を複製せず、対象日に活動したセッションごとの不透明IDと短い要約を、1本のMarkdownとして保存する。利用者は、その日にどのセッションで何をしたかを、後の仕事に使い回せる粒度で振り返れる。本文の見出しとfront matterの形は `write-doc` の `agent-session-digest` 型が持ち、この入口は素材と保存先を渡すだけである。工程の順は同じdirectoryの [`playbook.yml`](playbook.yml) にある。
 
 ## 入力
 
-- `user_input`: 対象日の指定を含む依頼。指定が無ければ `output.timezone` の当日。
-- `references`: 任意。追加で従う資料の絶対path配列。手順の最初に読み、`write-doc` の `references` へ加える。プロジェクト固有の規約や文脈は、対象repositoryのAGENTS.md / CLAUDE.mdとこの入力で渡される。
-- 同じdirectoryの [`playbook.yml`](playbook.yml) の `output`（`dir` / `format` / `timezone` / `subagents`）と `contract`（`session_item_fields` / `document_type` / `output_name`）。同じagentがこのYAMLを読み、`steps` の宣言順を実行順の正式な定義にする。
-- 収集済みの日次索引: 同じpackageの公開skill `collect-sessions` が `state_dir` に作る。その設定は利用者の `collect-sessions.config.yml` にあり、この入口は読まない。
+依頼の `user_input` から対象日を読む。指定が無ければ `collect-sessions` の設定の timezone での当日にする。保存先directoryの絶対pathを `output_directory` で受け取る。無ければ、どこへ保存するかで成果物の置き場が変わるので、止まって利用者に問う。subagent の分は、利用者が含めると言ったときだけ含める。任意の `references` は、最初に読んで `write-doc` へそのまま渡す。
 
-## 判断基準
+## 要約は共有されるものとして書く
 
-- **索引は確定しているか。** `collect-sessions` が `partial` または `provisional` を返したら止まり、日次資料を作らない。
-- **何を残し、何を混ぜないか。** material の `source_path` は要約時だけ読み、全文や中間要約を保存しない。material自体もfileに書かない。残すもの・混ぜないものは[privacy境界](references/privacy.md)に従う。本文の見出し、front matterの形、タグの形は `write-doc` の `agent-session-digest` 型のtemplateが定め、この入口は素材を `kind: text` で渡して `document_type: agent-session-digest` で保存するだけである。front matterの各値の意味と保存の判断は[日次記録の契約](references/output.md)に従う。各セッションから後で仕事へ再利用できる事実と判断を選び、必要な根拠を文字数で機械的に削らない。
-- **既存資料があるか。** 成果物は `<output.dir>/<対象日>.md`。同名の既存資料があるときは依頼する前に既存を読み、front matterの `input_hash` を比較する。同じなら何も依頼せず終える。異なり、かつ利用者がその既存pathの更新を明示しているときだけ `update_target` を渡す。明示が無ければ資料化を依頼しない。0件では空の成果物を書かない。
-- **subagentを含めるか。** `output.subagents` が `include` のときだけsubagent分を含める。
+原文にあったことは、日次記録へ書いてよい理由にならない。人や顧客ではなく役割と判断を、secret ではなく「認証設定を更新した」のような作業の意味を、pathやrepository名ではなく変更の種類を書く。迷う情報はぼかして残さず省き、省くと要る意味まで失うなら、要約をやめて止まる。伏せ字、先頭の数文字、hash化は匿名化ではない。出さないものの一覧は `agent-session-digest` 型に従う。原文は要約するときにだけ読み、全文も途中の要約もfileに書かない。
+
+タグには、利用者が設定か依頼で明示した公開可能な別名だけを入れる。原文から顧客名、repository名、案件名を推測して入れない。明示が無ければ空にする。
 
 ## 手順
 
-1. **収集する（`collect`）。** 同じpackageの公開skill `collect-sessions` の手順で対象日の索引を確定し、返った `index` / `target_date` / `provisional` を使う。外部runtimeが `target_date` を注入したことにせず、collectが返した値だけを後続へ渡す。
-2. **materialをまとめる（`material`）。** `python3 scripts/material.py --day-index <index> --date <target_date> [--include-subagents]` を実行する。入力は索引の絶対pathと対象日、出力は標準出力のJSON 1 objectで、`artifact.material`（セッションごとのrecordsの配列。keyは `contract.session_item_fields`）、`artifact.input_hash`、`artifact.target_date`、`artifact.session_count`、`counts.items` を持つ。fileは書かない。終了codeは `0` = 組み立てた、`2` = 索引不在・読めない・provisional / 未完成のセッション・原文の欠落、`4` = 対象日に完成済みのroot sessionが無い（診断は標準出力のJSON `error`）。`0` 以外なら止まる（`4` は0件として報告する）。
-3. **資料化を委譲する（`document`）。** 公開Skill `write-doc:write-doc` へ次を直接渡す。`material` は手順2の `artifact.material` をJSON文字列にして `{kind: text, content: <JSON文字列>}` にした1要素の配列（fileに書いてから渡さない。`items` のような別名やセッション配列そのものは渡さない）。`document_type` は `contract.document_type`（`agent-session-digest`）。`output_directory` は `output.dir` を展開した絶対path、`name` は `contract.output_name` の `<target_date>` を対象日へ置換した `.md` 名。更新の明示があるときだけこの2つに代えて `update_target`。`references` は入力の `references` をそのまま渡す。返ったobjectの `status` が `completed` なら `path` を最終資料、`failed` なら `reason` を報告して止まる。
-
-## 停止条件
-
-止まるのは次の場合である。診断または `reason` を報告し、資料が書けたことにしない。
-
-- `collect-sessions` が `partial` / `provisional` を返した。索引が確定していないので日次資料を作らない。
-- `material.py` が `2` を返した（索引不在・読めない・provisional / 未完成のセッション・原文の欠落）。
-- 同名の既存資料があり `input_hash` が異なるのに、利用者がその更新を明示していない。既存fileの上書きは許可が要るので、差分があることを報告して止まる。
-- `write-doc` が `failed` を返した。
-
-次は止まらず、記録して進む。
-
-- 対象日の指定が無い。`output.timezone` の当日を対象日として進め、報告に明記する。
-- 同名の既存資料があり `input_hash` が同じ。何も依頼せず「変更なし」と報告して終える。
-- セッションが0件（`material.py` が `4`）。空の成果物を書かず、0件と報告する。
+1. **索引を確定する。** 同じpackageの `collect-sessions` の手順で対象日の索引を作り、返った `index`、`target_date`、`provisional` を使う。`partial` か `provisional` なら、索引が確定していないので止まる。
+2. **素材をまとめる。** `python3 scripts/material.py --day-index <index> --date <target_date> [--include-subagents]` を実行する。標準出力のJSONの `artifact.material` がセッションごとのrecords、`artifact.input_hash` が素材のhashである。終了code `2` は索引や原文の欠落なので止まり、`4` は0件なので空の資料を書かずに0件と報告する。
+3. **既存の記録と比べる。** `<output_directory>/<target_date>.md` が既にあれば、そのfront matterの `input_hash` と比べる。同じなら何もせず「変更なし」と報告する。違うときは、利用者がその既存fileの更新を明示している場合だけ進む。明示が無ければ、既存fileの上書きには許可が要るので、差分があることを報告して止まる。
+4. **資料化を任せる。** 公開Skill `write-doc:write-doc` へ、`artifact.material` をJSON文字列にした `{kind: text, content: <JSON文字列>}` 一つだけの `material`、`document_type: agent-session-digest`、`output_directory` と `name: <target_date>.md`（更新なら、この二つに代えて既存fileの `update_target`）、入力の `references` を渡す。`status` が `completed` なら `path` を報告し、`failed` なら `reason` を報告して止まる。
 
 ## 出力
 
-`<output.dir>/<対象日>.md` の絶対pathと、セッション数、`input_hash` の報告。
+保存した日次記録の絶対path、セッション数、`input_hash` を報告する。

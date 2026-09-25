@@ -1,20 +1,12 @@
-# make-session-digest — 対象日に活動したエージェントセッションの日次要約を1本作る。
-# 収集は同じpackageの公開skill collect-sessions、保存は write-doc の公開契約へ委ねる。工程順の正式な定義はこのYAMLである。
 version: 2
 name: make-session-digest
 description: 対象日に活動したエージェントセッションの日次要約を作る
-inputs: [user_input, references]
+inputs: [user_input, output_directory, references]
 
 requires:
   - {plugin: write-doc, marketplace: write-doc}
 
-# 保存先と資料化の契約。material.py と document 工程が読む。資料の型（見出し・front matter）は write-doc の agent-session-digest 型が定める。
-# materialはmaterial.pyが標準出力へ返し、同じagentがインメモリで保持してwrite-docへkind:textで渡す。一時fileやcleanup工程は無い。
-output:
-  dir: ~/agent-session-digests
-  format: markdown
-  timezone: Asia/Tokyo
-  subagents: exclude
+# material.py が返すrecordsのkeyと、write-doc へ渡す文書型と file 名。
 contract:
   session_item_fields: [source, source_id, source_path, source_fingerprint, relation, parent_source_id, target_date, display, observed_at, collector]
   document_type: agent-session-digest
@@ -38,5 +30,5 @@ steps:
     purpose: materialをkind:textの素材にし、write-docのagent-session-digest型でMarkdownを書いて保存する
     input:
       document_type: agent-session-digest
-    needs: [material, input_hash, target_date, session_count, references]
+    needs: [material, input_hash, target_date, session_count, output_directory, references]
     provides: [status, path, reason]
