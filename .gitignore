@@ -14,6 +14,7 @@ __pycache__/
 !/plugins/
 !/scripts/
 !/AGENTS.md
+!/CLAUDE.md
 !/README.md
 !/.gitignore
 !/tests/
