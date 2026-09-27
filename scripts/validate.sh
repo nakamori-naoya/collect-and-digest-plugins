@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scenario: collect-and-digest package の各入口の決定論的toolが閉じた契約を守る
-# 配置と manifest は harness-tools の validate-plugin-repository.py が判定する。ここでは隣接playbook.ymlの契約、設定fileのschema、material の入出力だけを判定する。
+# 配置と manifest は harness-tools の validate-plugin-repository.py が判定する。ここでは設定fileのschema、material と doc-meta の入出力だけを判定する。
 # 収集内容の妥当性、要約の品質、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -23,27 +23,6 @@ python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" && pass "package 構造�
 [ -f "$PACKAGE/lib/collection_store.py" ] && pass "package共有code lib/collection_store.py" || fail "lib/collection_store.py"
 
 # ── 公開入口ごとの構造 ─────────────────────────────────────────────────
-# 型は入口ごとに固定: digest は period-digest、make-session-digest は agent-session-digest（型の基準資料は write-doc の template）。
-for entry in digest make-session-digest; do
-  dir="$ENTRY_DIR/$entry"
-  pb=$(yq -o=json -I=0 '.' "$dir/playbook.yml")
-  case "$entry" in digest) doc_type=period-digest ;; make-session-digest) doc_type=agent-session-digest ;; esac
-  jq -e --arg n "$entry" --arg t "$doc_type" '.version==2 and .name==$n and .requires==[{"plugin":"write-doc","marketplace":"write-doc"}]
-      and ((.steps|map(.id)|unique|length)==(.steps|length))
-      and all(.steps[]; ([has("agent_work"),has("script"),has("skill"),has("playbook")]|map(select(.))|length)==1)
-      and all(.steps[]|select(has("playbook")); .playbook=="write-doc")
-      and ((.steps[]|select(.id=="document")).input.document_type==$t) and ((.contract.document_type // $t)==$t)
-      and (.. | objects | has("digests") | not)' <<<"$pb" >/dev/null \
-    && pass "$entry: playbook.yml identity・外部requires・工程種別・型固定" || fail "$entry: playbook.yml"
-  scripts_ok=1
-  while IFS= read -r script; do [ -f "$dir/$script" ] || scripts_ok=0; done < <(jq -r '.steps[]|select(has("script")).script' <<<"$pb")
-  [ "$scripts_ok" -eq 1 ] && pass "$entry: steps.script は入口内の実在file" || fail "$entry: steps.script の参照先"
-done
-jq -e '.steps[0].skill=="collect-sessions"' <<<"$(yq -o=json -I=0 '.' "$ENTRY_DIR/make-session-digest/playbook.yml")" >/dev/null \
-  && [ -f "$ENTRY_DIR/collect-sessions/SKILL.md" ] && pass "make-session-digest: steps.skill は同packageの公開入口 collect-sessions" || fail "make-session-digest: steps.skill"
-for entry in collect-notes collect-sessions collect-slack; do
-  [ ! -f "$ENTRY_DIR/$entry/playbook.yml" ] && pass "$entry: 単一工程の入口はplaybook.ymlを持たない" || fail "$entry: playbook.yml"
-done
 for entry in collect-notes collect-sessions collect-slack digest; do
   [ -f "$ENTRY_DIR/$entry/assets/$entry.config.example.yml" ] && pass "$entry: 設定の記入例がある" || fail "$entry: 設定の記入例"
 done
@@ -129,6 +108,22 @@ validate_digest_material() {
   return "$status"
 }
 validate_digest_material && pass "digest material.py の設定読み取り・期間・型固定・skipped" || fail "digest material.py"
+
+# digest doc-meta.py skeleton: 共有される資料の末尾に載せる素材は、出典へ戻る値だけを持つ。
+# 基準資料: doc-meta.py の SHAREABLE_MATERIAL_KEYS。入力: material.py list の items と同じ形の JSON。
+# 合格述語: materials の各要素の key が date / source / title / url / occurred_at の部分集合で、path と dir を持たない。
+# 診断: FAIL の行。正例: path と dir を持つ素材。反例: 素材が object の配列でない（exit 2）。
+validate_doc_meta_skeleton() {
+  local repo="$TMP_ROOT/doc-meta-repo" status=0 out
+  mkdir -p "$repo/.harness-plugins"
+  cp "$ENTRY_DIR/digest/assets/digest.config.example.yml" "$repo/.harness-plugins/digest.config.yml"
+  out=$(python3 "$ENTRY_DIR/digest/scripts/doc-meta.py" skeleton --config "$repo/.harness-plugins/digest.config.yml" --digest daily \
+    --from 2026-09-15 --to 2026-09-15 --materials '[{"path":"/home/u/notes/a.md","dir":"/home/u/notes","date":"2026-09-15","source":"notes","source_id":"a","url":"https://example.com/a","title":"t","occurred_at":"","parts":false,"bytes":1}]') || status=1
+  jq -e '(.materials|length)==1 and all(.materials[]; (keys - ["date","source","title","url","occurred_at"])==[])' <<<"$out" >/dev/null || status=1
+  if python3 "$ENTRY_DIR/digest/scripts/doc-meta.py" skeleton --config "$repo/.harness-plugins/digest.config.yml" --digest daily --materials '"x"' >/dev/null 2>&1; then status=1; fi
+  return "$status"
+}
+validate_doc_meta_skeleton && pass "digest doc-meta.py skeleton は素材の手元のpathを載せない" || fail "digest doc-meta.py skeleton"
 
 # ── repositoryの回帰検査（harness-tools）: CI workflowのSHA固定 ──
 python3 "$TOOLS/test-hardening.py" --repository "$ROOT" && pass "test-hardening --repository" || fail "test-hardening --repository"

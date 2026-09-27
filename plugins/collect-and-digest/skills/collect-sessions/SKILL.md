@@ -19,4 +19,4 @@ description: Claude Code / Codexのローカルセッションを、原文を複
 
 1. **対象日を決める。** 指定が無ければ設定の `timezone` の当日にし、報告に書く。対象日は、その日のtimestampを持つイベントがあるかで決め、開始日では決めない。
 2. **設定を読み、走査する。** `python3 scripts/config.py read` で `${XDG_CONFIG_HOME:-~/.config}/harness-plugins/collect-sessions.config.yml` を読む。セッションの置き場はmachineごとに違うので、この設定はrepositoryではなく利用者ごとに置く。設定が無いか形が違えば、終了code `2` と診断が返るので止まる。記入例は [`assets/collect-sessions.config.example.yml`](assets/collect-sessions.config.example.yml) にある。続けて `python3 scripts/session.py scan --config <readが返したconfig> --date <YYYY-MM-DD>` を実行し、`2` なら止まる。事前の確認だけなら `--dry-run` を付ける。
-3. **報告する。** 対象日、`counts`（discovered / written / updated / unchanged / skipped / unrecognized / provisional）、日次索引、`provisional` の有無を報告する。0件でも `counts` を示す。
+3. **報告する。** 対象日（`target_date`）、日次索引の絶対path（`index`）、`counts`（discovered / written / updated / unchanged / skipped / unrecognized / provisional）を報告する。0件でも `counts` を示す。これがほかの入口へ渡す出力である。
