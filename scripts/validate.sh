@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Scenario: collect-and-digest package が公開入口5つで自己完結し、各入口の決定論的toolが閉じた契約を守る
-# 機械検査は宣言と実体の対応、隣接playbook.ymlの契約、設定fileのschema、material の入出力だけを判定する。
+# Scenario: collect-and-digest package の各入口の決定論的toolが閉じた契約を守る
+# 配置と manifest は harness-tools の validate-plugin-repository.py が判定する。ここでは隣接playbook.ymlの契約、設定fileのschema、material の入出力だけを判定する。
 # 収集内容の妥当性、要約の品質、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -17,44 +17,12 @@ fail() { printf 'FAIL: %s\n' "$1"; failed=1; }
 
 PACKAGE="$ROOT/plugins/collect-and-digest"
 ENTRY_DIR="$PACKAGE/skills"
-ENTRIES=(collect-notes collect-sessions collect-slack digest make-session-digest)
 
-# ── 配置と identity ──────────────────────────────────────────────────────
-for market in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
-  if jq -e '.name=="collect-and-digest" and (.plugins|length)==1 and .plugins[0].name=="collect-and-digest" and .plugins[0].version=="7.0.0"
-            and ((.plugins[0].source=="./plugins/collect-and-digest") or (.plugins[0].source=={"source":"local","path":"./plugins/collect-and-digest"}))' "$ROOT/$market" >/dev/null; then
-    pass "$market identityとsource"
-  else
-    fail "$market identityとsource"
-  fi
-done
-claude_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACKAGE/.claude-plugin/plugin.json")
-codex_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACKAGE/.codex-plugin/plugin.json")
-[ "$claude_identity" = "$codex_identity" ] && pass "両runtime manifestのidentity一致" || fail "両runtime manifestのidentity一致"
-jq -e '.skills==["./skills/collect-notes","./skills/collect-sessions","./skills/collect-slack","./skills/digest","./skills/make-session-digest"]
-       and .metadata.harness=={"marketplace":"collect-and-digest"}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
-  && pass "公開入口5つ、playbooks / internalPlugins / implements 無し" || fail "manifestの公開宣言"
-manifest_dirs=$(find "$ROOT/plugins" -type d \( -name '.claude-plugin' -o -name '.codex-plugin' \) | sed "s#^$ROOT/##" | sort | tr '\n' ' ')
-[ "$manifest_dirs" = "plugins/collect-and-digest/.claude-plugin plugins/collect-and-digest/.codex-plugin " ] \
-  && pass "runtime manifest directoryはpackage rootの2つだけ" || fail "runtime manifest directoryが余分または欠落: $manifest_dirs"
-skill_dirs=$(find "$ENTRY_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | tr '\n' ' ')
-[ "$skill_dirs" = "collect-notes collect-sessions collect-slack digest make-session-digest " ] && pass "skills/直下は公開入口5つだけ" || fail "skills/直下: $skill_dirs"
-[ "$(find "$ROOT/plugins" -name SKILL.md -type f | wc -l | tr -d ' ')" -eq 5 ] && pass "SKILL.mdは公開入口の5本だけ（内部skillなし）" || fail "SKILL.mdの本数"
-[ "$(find "$ROOT/plugins" -type l | wc -l | tr -d ' ')" -eq 0 ] && pass "配布物にsymlinkなし" || fail "配布物にsymlinkがある"
+# ── 配置と manifest（harness-tools） ─────────────────────────────────────
+python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" && pass "package 構造（harness-tools）" || fail "package 構造（harness-tools）"
 [ -f "$PACKAGE/lib/collection_store.py" ] && pass "package共有code lib/collection_store.py" || fail "lib/collection_store.py"
 
 # ── 公開入口ごとの構造 ─────────────────────────────────────────────────
-for entry in "${ENTRIES[@]}"; do
-  dir="$ENTRY_DIR/$entry"
-  name=$(awk 'NR==1 { if ($0 != "---") exit 2; next } $0=="---" { exit } { print }' "$dir/SKILL.md" | yq -r '.name')
-  [ "$name" = "$entry" ] && pass "$entry: SKILL frontmatter name" || fail "$entry: SKILL frontmatter name = $name"
-  if rg -n --fixed-strings -e '${.' -e '<!-- BEGIN shared:' -e 'CLAUDE_PLUGIN_ROOT' -e 'BUNDLE_ROOT' "$dir" --glob '!*.pyc' >/dev/null \
-    || rg -n 'prepare\.sh|resolve\.sh|run-config\.py|state\.py|finalize\.sh|CFG_FILE' "$dir/SKILL.md" "$dir/references" >/dev/null; then
-    fail "$entry: 禁止参照形または旧runtime呼び出しが残っている"
-  else
-    pass "$entry: 禁止参照形と旧runtime呼び出しが無い"
-  fi
-done
 # 型は入口ごとに固定: digest は period-digest、make-session-digest は agent-session-digest（型の基準資料は write-doc の template）。
 for entry in digest make-session-digest; do
   dir="$ENTRY_DIR/$entry"
@@ -91,7 +59,7 @@ python3 -m unittest discover -s "$ROOT/tests" -p test_collection_integrity.py &&
 # 基準資料: 索引のschema（REQUIRED_INDEX_KEYS）。入力: --day-index の絶対pathと --date。正規化: JSONL行ごとのparse。
 # 合格述語: 対象日の完成済みroot sessionをrecordsにし、artifact.material / input_hash / target_date / session_count を返す。
 # 診断: 標準出力の JSON error、exit 2 / 4。正例: 1 root session。反例: provisional、原文欠落、相対path。
-# 境界例: 対象日に0件（exit 4）、旧形の --out-dir / --cleanup 引数（argparseで拒否）、fileが生成されないこと。
+# 境界例: 対象日に0件（exit 4）、fileが生成されないこと。
 validate_session_digest_material_fixture() {
   local fixture="$TMP_ROOT/session-digest-material"
   local script="$ENTRY_DIR/make-session-digest/scripts/material.py"
@@ -133,21 +101,15 @@ validate_session_digest_material_fixture() {
   (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/provisional-index.jsonl" --date 2026-09-02) >/dev/null 2>&1
   [ "$?" -eq 2 ] || status=1
 
-  # 反例: 原文が無い、相対path。境界例: 旧形の引数は受け付けない。
+  # 反例: 原文が無い、相対path。
   jq -c '.source_ref.path="'"$fixture/absent.jsonl"'"' "$fixture/day-index.jsonl" > "$fixture/absent-index.jsonl"
   if (cd "$fixture/non-git" && python3 "$script" --day-index "$fixture/absent-index.jsonl" --date 2026-09-02) >/dev/null 2>&1; then status=1; fi
   if (cd "$fixture" && python3 "$script" --day-index day-index.jsonl --date 2026-09-02) >/dev/null 2>&1; then status=1; fi
-  if python3 "$script" --day-index "$fixture/day-index.jsonl" --date 2026-09-02 --out-dir "$fixture/old" >/dev/null 2>&1; then status=1; fi
-  if python3 "$script" --cleanup --material-path "$fixture/x.json" --path "$fixture/y.md" --index "$fixture/day-index.jsonl" >/dev/null 2>&1; then status=1; fi
-  [ ! -e "$fixture/old" ] || status=1
-
-  # playbookに一時file配管が無い。
-  yq -o=json -I=0 '.' "$ENTRY_DIR/make-session-digest/playbook.yml" | jq -e '([.steps[].id]|index("cleanup")|not) and ([.steps[]|.provides[]?]|index("material_path")|not) and ([.steps[]|.provides[]?]|index("material"))' >/dev/null || status=1
   return "$status"
 }
 
 
-validate_session_digest_material_fixture && pass "make-session-digest material.py の標準出力material・0件・provisional・旧引数拒否" || fail "make-session-digest material.py"
+validate_session_digest_material_fixture && pass "make-session-digest material.py の標準出力material・0件・provisional" || fail "make-session-digest material.py"
 
 # digest material.py: 設定fileの1層読み取り、期間、型固定、0件 / skipped の区別
 validate_digest_material() {
