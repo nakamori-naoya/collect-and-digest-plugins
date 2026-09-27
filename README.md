@@ -113,7 +113,7 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 
 - `write-doc@write-doc`
 
-別repositoryへの依存は `digest` と `make-session-digest` の `playbook.yml` の `requires` に `{plugin, marketplace}` で宣言し、`playbook:` の工程として呼ぶ。相手の内部機能名へ依存せず、versionは固定しない。
+`digest` と `make-session-digest` は、`write-doc` の公開入口へ素材、文書型、保存先を渡して呼ぶ。相手の内部機能名へ依存せず、versionは固定しない。
 
 ## 検証
 
@@ -131,10 +131,6 @@ claude plugin eval . --case <ケース> --runs 1 --ablation none --keep-temp \
 ```
 
 出来は、別の Claude が条件ごとに3回判定し、重み付きの点数にする。採点の道具は harness-tools の `tools/grade-eval.sh` で、ケースと作業場所（`kept temp:` に出る一時ディレクトリ）を絶対パスで渡す。共通の条件は `evals/criteria/`、ケースに固有の条件は `evals/<入口>/<ケース>/grading/criteria.md`、採点役を確かめる資料と期待する判定は同じケースの `grading/calibration/` にある。較正の資料の最後の報告は、`out/trace.jsonl` の result の行に置いてある。
-
-## 業務知識
-
-- [収集とダイジェスト作成の業務知識と振る舞い](docs/2026-09-02-収集とダイジェスト作成-業務知識と振る舞い.md)
 
 ## 保守tool
 

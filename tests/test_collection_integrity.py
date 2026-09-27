@@ -161,7 +161,6 @@ class CollectionIntegrity(unittest.TestCase):
         with patch.object(store.subprocess, 'run', return_value=allowed):
             slack.guard_dir(str(self.root))
 
-    # 基準資料: digest READMEの「完全な設定」例と公開playbook固有validator。
     # 基準資料: 各入口の assets/*.config.example.yml と scripts の validate_config。
     # 入力: 記入例YAMLをyqでJSONへ変換したもの。合格述語: 記入例を各scriptのvalidate_configが受理する。
     # 反例: keyの追加・欠落・型違い・許容外の値を拒否する。境界例: digestの空sourcesは構造上合法（material.py listで停止）。

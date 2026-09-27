@@ -67,6 +67,18 @@ def norm_labels(items):
     return out
 
 
+# 資料は共有されるので、素材からは読み手が出典へ戻るための値だけを載せる。
+# 手元の絶対pathや置き場は、書いた人の環境を漏らし、ほかの人には開けない。
+SHAREABLE_MATERIAL_KEYS = ("date", "source", "title", "url", "occurred_at")
+
+
+def shareable_materials(raw):
+    items = json.loads(raw) if raw else []
+    if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+        fail("--materials は素材の object の配列")
+    return [{k: i[k] for k in SHAREABLE_MATERIAL_KEYS if k in i} for i in items]
+
+
 def cmd_skeleton(args):
     cfg = load_json(args.config)
     target = None
@@ -101,7 +113,7 @@ def cmd_skeleton(args):
         "participants": [],
         "participants_note": "",
         "labels": norm_labels(labels + auto),
-        "materials": args.materials and json.loads(args.materials) or [],
+        "materials": shareable_materials(args.materials),
     }
     print(json.dumps(meta, ensure_ascii=False))
 

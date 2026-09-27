@@ -266,8 +266,7 @@ def resolve_dir(root, p):
 def validate(pl):
     """設定の決定的な部分を検査する。**この検査を落とすと特化が消える。**
 
-    playbook 化で設定解決を共有の resolver へ移したとき、ここの検査ごと
-    消えていた。型の制限は digest の中心なので、設定を読む側が必ず持つ。
+    型の制限は digest の中心なので、設定を読む側が必ず持つ。
     """
     name = pl.get("name") or "?"
     t = pl.get("type") or ""
