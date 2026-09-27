@@ -1,0 +1,2 @@
+{"type": "user", "sessionId": "22222222-aaaa-4bbb-8ccc-000000000002", "timestamp": "2026-09-20T05:00:00.000Z", "cwd": "/Users/yamada/work/docs", "message": {"role": "user", "content": "社内の新人向けに、git の branch の切り方の手順書を書いて。"}}
+{"type": "assistant", "sessionId": "22222222-aaaa-4bbb-8ccc-000000000002", "timestamp": "2026-09-20T05:40:00.000Z", "cwd": "/Users/yamada/work/docs", "message": {"role": "assistant", "content": "branch の切り方、命名、main への追従の三節で手順書を書き、docs/git-branch.md に保存しました。"}}

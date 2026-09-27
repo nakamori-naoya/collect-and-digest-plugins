@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "ts": "1789833600.000100",
+      "user": "U0PM",
+      "text": "<@U0ME> 金曜のリリース手順、確認お願いできますか\n```\n1. migrate\n2. deploy api\n3. deploy worker\n```\n*急ぎではない* です",
+      "permalink": "https://example-team.slack.com/archives/C0DEV/p1789833600000100"
+    },
+    {
+      "ts": "1789834200.000400",
+      "thread_ts": "1789833600.000100",
+      "user": "U0ME",
+      "text": "確認します。手順書の3番目が古いかもしれません",
+      "permalink": "https://example-team.slack.com/archives/C0DEV/p1789834200000400"
+    },
+    {
+      "ts": "1789834800.000500",
+      "thread_ts": "1789833600.000100",
+      "user": "U0DBA",
+      "text": "ステージングのDBのパスワードは natsu2026 のままです。変えるなら今日中に言ってください",
+      "permalink": "https://example-team.slack.com/archives/C0DEV/p1789834800000500"
+    },
+    {
+      "ts": "1789835400.000600",
+      "thread_ts": "1789833600.000100",
+      "user": "U0SRE",
+      "text": "CI の環境変数に入れるキーはこれです AKIAIOSFODNN7EXAMPLE",
+      "permalink": "https://example-team.slack.com/archives/C0DEV/p1789835400000600"
+    },
+    {
+      "ts": "1789836000.000700",
+      "thread_ts": "1789833600.000100",
+      "user": "U0BOT",
+      "text": "deploy bot: worker のデプロイが完了しました"
+    },
+    {
+      "ts": "1789900000.000800",
+      "thread_ts": "1789833600.000100",
+      "user": "U0PM",
+      "text": "手順書を直しました。3番目は deploy worker --canary に変わっています",
+      "permalink": "https://example-team.slack.com/archives/C0DEV/p1789900000000800"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "channel": "C0RANDOM",
+  "label": "#random",
+  "messages": [
+    {
+      "ts": "1789840000.001000",
+      "user": "U0X",
+      "text": "今日のランチどこ行きます？",
+      "permalink": "https://example-team.slack.com/archives/C0RANDOM/p1789840000001000"
+    }
+  ]
+}

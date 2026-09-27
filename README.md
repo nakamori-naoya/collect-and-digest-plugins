@@ -121,6 +121,17 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 bash scripts/validate.sh
 ```
 
+入口が判断の要を外さないかは、`evals/` の下のケースで確かめる。Slack、Notion、Google Docs には eval の中で触れないので、ケースは手元に置いた材料（Slack の書き出し、集めた議事録と Slack の写し、作業場所の中の偽のセッション）だけで動く。collect-slack は写しを原文のまま、戻れるものだけ作るか、digest は時間順の素材を期間の終わりの状態へ並べ直すか、make-session-digest は日次記録を共有されるものとして書くかを見る。collect-notes は上流の MCP が要り、手元の材料では collect-slack と同じ判断しか確かめられないので、ケースを置いていない。
+
+実行は repository の root で、ケースごとに次を動かす。`--scaffold` はケースの `scaffold.sh` を自分の権限で動かすので、この repository のケースにだけ使う。write-doc の skill は隔離環境に入らないので、兄弟 checkout `../write-doc-plugins/` から作業場所へ写す。
+
+```bash
+claude plugin eval . --case <ケース> --runs 1 --ablation none --keep-temp \
+  --scaffold --allow-tools Write Edit Bash --max-cost-usd 5 --no-publish
+```
+
+出来は、別の Claude が条件ごとに3回判定し、重み付きの点数にする。採点の道具は harness-tools の `tools/grade-eval.sh` で、ケースと作業場所（`kept temp:` に出る一時ディレクトリ）を絶対パスで渡す。共通の条件は `evals/criteria/`、ケースに固有の条件は `evals/<入口>/<ケース>/grading/criteria.md`、採点役を確かめる資料と期待する判定は同じケースの `grading/calibration/` にある。較正の資料の最後の報告は、`out/trace.jsonl` の result の行に置いてある。
+
 ## 業務知識
 
 - [収集とダイジェスト作成の業務知識と振る舞い](docs/2026-09-02-収集とダイジェスト作成-業務知識と振る舞い.md)
