@@ -1,0 +1,13 @@
+version: 1
+sources:
+  - dir: notes
+  - dir: slack
+labels: []
+output:
+  dir: out/digest
+  format: markdown
+digests:
+  - name: weekly
+    period: weekly
+    type: period-digest
+    prompt: ""

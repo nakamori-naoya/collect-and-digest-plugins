@@ -1,0 +1,13 @@
+version: 1
+slack_dir: out/slack
+timezone: Asia/Tokyo
+collect:
+  channels: all
+  targets:
+    channel_messages: false
+    direct_mentions: true
+    group_mentions: false
+    authored_threads: true
+  groups: []
+  max_bytes: 10485760
+  credential_redaction: true

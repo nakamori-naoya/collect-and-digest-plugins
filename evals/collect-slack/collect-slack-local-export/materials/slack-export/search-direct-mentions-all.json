@@ -1,0 +1,26 @@
+[
+  {
+    "channel_id": "C0DEV",
+    "ts": "1789833600.000100",
+    "thread_ts": "1789833600.000100",
+    "user": "U0PM",
+    "text": "<@U0ME> 金曜のリリース手順、確認お願いできますか",
+    "permalink": "https://example-team.slack.com/archives/C0DEV/p1789833600000100"
+  },
+  {
+    "channel_id": "C0PRIV",
+    "ts": "1789869600.000200",
+    "thread_ts": "1789869600.000200",
+    "user": "U0LEAD",
+    "text": "<@U0ME> 採用の件、見ておいてください",
+    "permalink": "https://example-team.slack.com/archives/C0PRIV/p1789869600000200"
+  },
+  {
+    "channel_id": "C0OPS",
+    "ts": "1789812000.000300",
+    "thread_ts": "1789812000.000300",
+    "user": "U0SRE",
+    "text": "<@U0ME> 昨夜のアラートの件",
+    "permalink": "https://example-team.slack.com/archives/C0OPS/p1789812000000300"
+  }
+]

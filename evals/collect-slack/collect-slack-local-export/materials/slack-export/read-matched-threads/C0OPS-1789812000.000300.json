@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "ts": "1789812000.000300",
+      "user": "U0SRE",
+      "text": "<@U0ME> 昨夜のアラートの件",
+      "permalink": "https://example-team.slack.com/archives/C0OPS/p1789812000000300"
+    },
+    {
+      "ts": "1789812600.000900",
+      "thread_ts": "1789812000.000300",
+      "user": "U0ME",
+      "text": "見ました。閾値の誤りでした",
+      "permalink": "https://example-team.slack.com/archives/C0OPS/p1789812600000900"
+    }
+  ]
+}
